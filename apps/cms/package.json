@@ -3,12 +3,23 @@
   "version": "0.0.1",
   "private": true,
   "scripts": {
-    "dev": "echo \"cms not scaffolded yet\"",
-    "build": "echo \"cms not scaffolded yet\"",
-    "typecheck": "echo \"cms not scaffolded yet\"",
-    "test": "echo \"cms not scaffolded yet\""
+    "dev": "next dev -p 3001",
+    "build": "next build",
+    "start": "next start -p 3001",
+    "typecheck": "tsc --noEmit",
+    "test": "echo \"No tests for @ubb/cms\""
   },
   "dependencies": {
-    "@ubb/engine": "workspace:*"
+    "@payloadcms/db-postgres": "^3.68.5",
+    "@payloadcms/next": "^3.68.5",
+    "@ubb/engine": "workspace:*",
+    "next": "^15.5.5",
+    "payload": "^3.68.5",
+    "react": "^19.1.1",
+    "react-dom": "^19.1.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.18.6",
+    "typescript": "^5.9.2"
   }
 }

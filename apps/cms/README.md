@@ -1,12 +1,35 @@
-# apps/cms — Admin Dashboard (Payload CMS)
+# apps/cms — Payload CMS (Next.js)
 
-This app hosts the internal admin UI used to:
-- create clients, models, model versions (draft/published)
-- author steps/sections/fields/options
-- manage pricing data
-- manage rendering layers and preview galleries
-- author rules JSON (v0) and later visual builders
+This package hosts the Payload CMS v3 admin and API on top of Next.js.
 
-## Runtime vs authoring
-The CMS stores authoring data. Runtime must use compiled artifacts produced by the compiler/publish pipeline.
+## Environment
 
+Copy `.env.example` to `.env.local` and set:
+
+- `DATABASE_URL`
+- `PAYLOAD_SECRET`
+- `NEXT_PUBLIC_SERVER_URL`
+
+## Local database
+
+Postgres is provided in `docker/compose.yml`.
+
+```bash
+cd docker
+docker compose up -d postgres
+```
+
+Default local connection:
+
+```text
+postgresql://boatbuilder:boatbuilder@localhost:5432/boatbuilder
+```
+
+## Run
+
+```bash
+corepack pnpm install
+corepack pnpm --filter @ubb/cms dev
+```
+
+Open `http://localhost:3001/admin`.
