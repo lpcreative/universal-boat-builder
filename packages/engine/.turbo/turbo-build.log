@@ -1,4 +1,0 @@
-
-> @ubb/engine@0.0.1 build /Users/peterlegeza/DEV/universal-boat-builder/packages/engine
-> tsc -p tsconfig.json
-

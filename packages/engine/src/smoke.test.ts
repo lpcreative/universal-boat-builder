@@ -1,8 +1,8 @@
 import { describe, it, expect } from "vitest";
-import { ENGINE_VERSION } from "./index";
+import { compileModelVersion } from "./index.js";
 
 describe("engine smoke", () => {
-  it("exports a version", () => {
-    expect(ENGINE_VERSION).toBeTruthy();
+  it("exports compiler functions", () => {
+    expect(typeof compileModelVersion).toBe("function");
   });
 });
