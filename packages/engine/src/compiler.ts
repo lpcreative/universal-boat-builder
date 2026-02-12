@@ -7,7 +7,7 @@
 // - All ordering should be stable (order fields, then id as tie-breaker).
 // - Reject invalid references at compile time (publish must be gated).
 
-import type { ModelConfig } from '../model-config';
+import type { ModelConfig } from "./model-config";
 
 export interface AssetManifest {
   layersByView: Record<string, Array<{ layerId: string; assetUrl: string }>>;

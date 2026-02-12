@@ -1,0 +1,14 @@
+{
+  "name": "@ubb/cms",
+  "version": "0.0.1",
+  "private": true,
+  "scripts": {
+    "dev": "echo \"cms not scaffolded yet\"",
+    "build": "echo \"cms not scaffolded yet\"",
+    "typecheck": "echo \"cms not scaffolded yet\"",
+    "test": "echo \"cms not scaffolded yet\""
+  },
+  "dependencies": {
+    "@ubb/engine": "workspace:*"
+  }
+}
