@@ -180,10 +180,10 @@
           "type": "object",
           "additionalProperties": false,
           "properties": {
-            "amount": { "type": "number" },
-            "currency": { "type": "string" }
+            "msrp": { "type": "number" },
+            "dealer": { "type": "number" }
           },
-          "required": ["amount", "currency"]
+          "required": ["msrp", "dealer"]
         },
         "quantity": { "type": "number" },
         "category": { "type": "string" }
@@ -327,4 +327,3 @@
     }
   }
 }
-

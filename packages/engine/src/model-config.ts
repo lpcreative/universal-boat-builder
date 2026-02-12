@@ -12,6 +12,11 @@ export type FieldType =
 
 export type PriceMode = 'msrp' | 'dealer' | 'both';
 
+export interface PriceBooks {
+  msrp: number;
+  dealer: number;
+}
+
 export interface ModelConfig {
   meta: {
     clientId: string;
@@ -52,9 +57,9 @@ export interface ModelConfig {
 
   pricing: {
     mode: PriceMode;
-    basePrice: Money;
+    basePrice: PriceBooks;
     // Optional: trim-level base prices (if model has trims)
-    trimBasePrices?: Record<string, Money>;
+    trimBasePrices?: Record<string, PriceBooks>;
 
     // Packages can auto-include options and/or add their own price.
     packages?: PackageDef[];
@@ -124,7 +129,7 @@ export interface OptionDef {
   code?: string; // build code/SKU
 
   // Pricing delta when selected (may be 0)
-  price?: Money;
+  price?: PriceBooks;
 
   // Optional: display helpers
   swatchHex?: string;
@@ -203,7 +208,7 @@ export interface PackageDef {
   id: string;
   label: string;
   code?: string;
-  price?: Money; // package price add-on
+  price?: PriceBooks; // package price add-on
   includes?: Array<{ fieldId: string; optionId: string }>;
 }
 
@@ -218,7 +223,7 @@ export interface LineItemDef {
   id: string;
   label: string;
   code?: string;
-  amount: Money;
+  amount: PriceBooks;
   quantity?: number; // default 1
   category?: string; // e.g., 'rigging', 'engine', 'electronics'
 }
@@ -257,4 +262,3 @@ export interface ConstraintDef {
   description?: string;
   // v0 placeholder. Implement as needed.
 }
-
