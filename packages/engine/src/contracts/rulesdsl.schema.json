@@ -1,0 +1,330 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://launchpadcreativegroup.com/schemas/boat-builder/rules-v0.schema.json",
+  "title": "Boat Builder Rules DSL (v0)",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "rules": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/Rule" }
+    }
+  },
+  "required": ["rules"],
+  "$defs": {
+    "BuilderValue": {
+      "oneOf": [
+        { "type": "string" },
+        { "type": "number" },
+        { "type": "boolean" },
+        { "type": "null" },
+        {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      ]
+    },
+
+    "Condition": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "all": {
+              "type": "array",
+              "items": { "$ref": "#/$defs/Condition" },
+              "minItems": 1
+            }
+          },
+          "required": ["all"]
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "any": {
+              "type": "array",
+              "items": { "$ref": "#/$defs/Condition" },
+              "minItems": 1
+            }
+          },
+          "required": ["any"]
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "not": { "$ref": "#/$defs/Condition" }
+          },
+          "required": ["not"]
+        },
+
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "eq": {
+              "type": "array",
+              "prefixItems": [
+                { "type": "string" },
+                { "$ref": "#/$defs/BuilderValue" }
+              ],
+              "items": false,
+              "minItems": 2,
+              "maxItems": 2
+            }
+          },
+          "required": ["eq"]
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "neq": {
+              "type": "array",
+              "prefixItems": [
+                { "type": "string" },
+                { "$ref": "#/$defs/BuilderValue" }
+              ],
+              "items": false,
+              "minItems": 2,
+              "maxItems": 2
+            }
+          },
+          "required": ["neq"]
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "in": {
+              "type": "array",
+              "prefixItems": [
+                { "type": "string" },
+                {
+                  "type": "array",
+                  "items": { "$ref": "#/$defs/BuilderValue" },
+                  "minItems": 1
+                }
+              ],
+              "items": false,
+              "minItems": 2,
+              "maxItems": 2
+            }
+          },
+          "required": ["in"]
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "contains": {
+              "type": "array",
+              "prefixItems": [
+                { "type": "string" },
+                { "$ref": "#/$defs/BuilderValue" }
+              ],
+              "items": false,
+              "minItems": 2,
+              "maxItems": 2
+            }
+          },
+          "required": ["contains"]
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "gt": {
+              "type": "array",
+              "prefixItems": [
+                { "type": "string" },
+                { "type": "number" }
+              ],
+              "items": false,
+              "minItems": 2,
+              "maxItems": 2
+            }
+          },
+          "required": ["gt"]
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "lt": {
+              "type": "array",
+              "prefixItems": [
+                { "type": "string" },
+                { "type": "number" }
+              ],
+              "items": false,
+              "minItems": 2,
+              "maxItems": 2
+            }
+          },
+          "required": ["lt"]
+        }
+      ]
+    },
+
+    "LineItem": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "id": { "type": "string" },
+        "label": { "type": "string" },
+        "code": { "type": "string" },
+        "amount": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "amount": { "type": "number" },
+            "currency": { "type": "string" }
+          },
+          "required": ["amount", "currency"]
+        },
+        "quantity": { "type": "number" },
+        "category": { "type": "string" }
+      },
+      "required": ["id", "label", "amount"]
+    },
+
+    "Action": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": { "action": { "const": "showStep" }, "stepId": { "type": "string" } },
+          "required": ["action", "stepId"]
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": { "action": { "const": "hideStep" }, "stepId": { "type": "string" } },
+          "required": ["action", "stepId"]
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": { "action": { "const": "showSection" }, "sectionId": { "type": "string" } },
+          "required": ["action", "sectionId"]
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": { "action": { "const": "hideSection" }, "sectionId": { "type": "string" } },
+          "required": ["action", "sectionId"]
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": { "action": { "const": "showField" }, "fieldId": { "type": "string" } },
+          "required": ["action", "fieldId"]
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": { "action": { "const": "hideField" }, "fieldId": { "type": "string" } },
+          "required": ["action", "fieldId"]
+        },
+
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "action": { "const": "enableOption" },
+            "fieldId": { "type": "string" },
+            "optionId": { "type": "string" }
+          },
+          "required": ["action", "fieldId", "optionId"]
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "action": { "const": "disableOption" },
+            "fieldId": { "type": "string" },
+            "optionId": { "type": "string" }
+          },
+          "required": ["action", "fieldId", "optionId"]
+        },
+
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": { "action": { "const": "requireField" }, "fieldId": { "type": "string" } },
+          "required": ["action", "fieldId"]
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": { "action": { "const": "unrequireField" }, "fieldId": { "type": "string" } },
+          "required": ["action", "fieldId"]
+        },
+
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "action": { "const": "setValue" },
+            "fieldId": { "type": "string" },
+            "value": { "$ref": "#/$defs/BuilderValue" }
+          },
+          "required": ["action", "fieldId", "value"]
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": { "action": { "const": "clearValue" }, "fieldId": { "type": "string" } },
+          "required": ["action", "fieldId"]
+        },
+
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": { "action": { "const": "addLineItem" }, "lineItem": { "$ref": "#/$defs/LineItem" } },
+          "required": ["action", "lineItem"]
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": { "action": { "const": "removeLineItem" }, "lineItemId": { "type": "string" } },
+          "required": ["action", "lineItemId"]
+        }
+      ]
+    },
+
+    "Rule": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "id": { "type": "string" },
+        "description": { "type": "string" },
+        "priority": { "type": "number" },
+        "when": { "$ref": "#/$defs/Condition" },
+        "then": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/Action" },
+          "minItems": 1
+        },
+        "else": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/Action" }
+        },
+        "origin": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "scope": { "enum": ["client", "model", "version", "system"] },
+            "sourceId": { "type": "string" }
+          },
+          "required": ["scope"]
+        }
+      },
+      "required": ["id", "priority", "when", "then"]
+    }
+  }
+}
+
