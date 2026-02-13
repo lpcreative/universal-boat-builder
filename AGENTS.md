@@ -4,6 +4,7 @@
 
 ## Roadmap
 - Follow: `docs/roadmap/universal-boat-builder-v0.3.md`
+- CMS is Directus; do not add legacy CMS packages from the previous stack; admin runs via Directus (Docker/managed).
 - Architectural decisions: `docs/decisions/`
 - Contracts (authoritative):
   - `packages/engine/src/model-config.ts` — compiled `ModelConfig` contract (TypeScript source of truth)
@@ -44,4 +45,3 @@ When opening an Issue or starting a Codex task, include:
 - Acceptance criteria (bullet list)
 - Out of scope (bullet list)
 - Tests expected
-

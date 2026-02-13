@@ -1,21 +1,21 @@
 # Boat Builder Compile Step & Publish Pipeline (v0)
 
 This file is a repo-friendly companion to the main roadmap document.
-It describes how we compile editable CMS data (Payload) into a single, immutable runtime artifact (`ModelConfig`)
+It describes how we compile editable CMS data (Directus control plane) into a single, immutable runtime artifact (`ModelConfig`)
 and how publishing should be gated and versioned.
 
 ## Goals
 
-- **Deterministic runtime payload**: identical draft inputs produce identical compiled output.
-- **Runtime performance**: Builder loads *one* compiled config payload (plus assets) rather than many relational queries.
+- **Deterministic runtime artifact**: identical draft inputs produce identical compiled output.
+- **Runtime performance**: Builder loads *one* compiled config artifact (plus assets) rather than many relational queries.
 - **Safety**: invalid rules, broken references, or missing assets cannot be published.
 - **Historical accuracy**: published versions are immutable; submissions reference a specific published version.
 
 ## Terms
 
-- **Draft ModelVersion**: editable version in Payload.
+- **Draft ModelVersion**: editable version in Directus control plane.
 - **Published ModelVersion**: immutable, compiled, served to public builder.
-- **Compiled ModelConfig**: single JSON payload used by the Builder UI and Engine.
+- **Compiled ModelConfig**: single JSON artifact used by the Builder UI and Engine.
 
 ## Pipeline overview
 

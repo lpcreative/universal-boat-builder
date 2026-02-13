@@ -7,8 +7,8 @@
 AGENTS.md
 CONTRIBUTING.md
 README.md
-apps/cms/README.md
-apps/cms/src/.gitkeep
+apps/admin/README.md
+apps/admin/src/.gitkeep
 apps/web/README.md
 apps/web/src/.gitkeep
 docker/README.md

@@ -1,7 +1,7 @@
 # Contracts
 
 Contracts define the stable interfaces between:
-- Admin-authored configs (Payload)
+- Admin-authored configs (Directus control plane)
 - Compiled runtime configs (Engine)
 - Builder UI rendering
 - Submission storage and output generation

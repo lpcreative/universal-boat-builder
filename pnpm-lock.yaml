@@ -15,12 +15,6 @@ importers:
         specifier: ^5.0.0
         version: 5.9.3
 
-  apps/cms:
-    dependencies:
-      '@ubb/engine':
-        specifier: workspace:*
-        version: link:../../packages/engine
-
   apps/web:
     dependencies:
       '@ubb/engine':

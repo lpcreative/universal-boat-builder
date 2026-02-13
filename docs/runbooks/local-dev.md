@@ -19,8 +19,8 @@ This runbook is a starting point and can be refined once tooling choices are fin
 - Start dev server in `apps/web`
 - Confirm it can load a compiled `ModelConfig` fixture from the engine
 
-## Payload CMS (admin)
-- Start Payload in `apps/cms`
+## Directus admin (control plane)
+- Start Directus (Docker or managed service)
 - Confirm it can connect to Postgres and upload media
 
 ## Notes

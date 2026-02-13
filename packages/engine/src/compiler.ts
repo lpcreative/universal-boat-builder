@@ -1,6 +1,6 @@
 // packages/engine/src/compiler/compile-model-version.ts
 //
-// Skeleton: Draft (Payload) -> Compiled ModelConfig artifact
+// Skeleton: Draft (Directus control plane) -> Compiled ModelConfig artifact
 //
 // Notes:
 // - Keep this pure/deterministic: same inputs => same outputs.
@@ -41,7 +41,7 @@ export interface CompileResult {
 
 /**
  * Generic compile context.
- * You can replace the `unknown` types with your Payload collection types.
+ * You can replace the `unknown` types with your Directus collection types.
  */
 export interface CompileContext {
   client: unknown;
@@ -51,7 +51,7 @@ export interface CompileContext {
 }
 
 /**
- * Compile a draft model version into a single runtime payload.
+ * Compile a draft model version into a single runtime artifact.
  * This should be invoked on publish (or on-demand for preview).
  */
 export function compileModelVersion(ctx: CompileContext): CompileResult {
