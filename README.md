@@ -29,7 +29,7 @@ See the roadmap/spec:
 ## Repo layout
 
 - `apps/web/` — Next.js builder UI (public configurator)
-- `apps/cms/` — Payload CMS (admin dashboard for building models/rules/layers)
+- `apps/admin/` — Directus control plane (Docker or managed) for model/rule/layer authoring
 - `packages/engine/` — shared engine (rules, pricing, compile pipeline, selection)
 - `docs/` — roadmap, contracts, ADRs, runbooks
 - `.github/` — PR/issue templates + Codex prompts

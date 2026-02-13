@@ -18,7 +18,7 @@ The system must support:
 Adopt a JavaScript/TypeScript-first stack aligned with the team's skills:
 
 - Frontend: Next.js (React) + TypeScript
-- Admin/CMS: Payload CMS (Node/TS) for ACF-like model authoring
+- Admin/CMS: Directus (control plane) for model authoring, media, and access control
 - DB: PostgreSQL
 - Assets: S3-compatible object storage (local dev may use MinIO)
 - Server compositing: Sharp
@@ -26,16 +26,16 @@ Adopt a JavaScript/TypeScript-first stack aligned with the team's skills:
 
 Repo is a monorepo:
 - `apps/web`: builder UI
-- `apps/cms`: admin dashboard
+- `apps/admin`: Directus control plane
 - `packages/engine`: shared rules/pricing/render selection/compile pipeline
 
 ## Consequences
 - Shared engine enables reuse across clients.
-- Payload reduces custom admin build time, but we still need compile/publish gates.
+- Directus accelerates admin delivery, but we still need compile/publish gates.
 - Strong TypeScript contracts reduce drift.
 
 ## Alternatives considered
 - Keep WordPress + ACF + Fluent Forms: rejected (not standalone, hard to productize).
 - Fully custom admin UI from scratch: possible later; rejected for v0 due to timeline.
-- Strapi/Directus: viable; Payload chosen for TS-first dev ergonomics.
+- Custom admin UI from scratch: possible later; deferred for v0 timeline.
 
