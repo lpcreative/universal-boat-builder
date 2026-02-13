@@ -21,6 +21,22 @@ importers:
         specifier: workspace:*
         version: link:../../packages/engine
 
+  packages/cms-adapter:
+    devDependencies:
+      typescript:
+        specifier: ^5.0.0
+        version: 5.9.3
+
+  packages/cms-adapter-directus:
+    dependencies:
+      '@ubb/cms-adapter':
+        specifier: workspace:*
+        version: link:../cms-adapter
+    devDependencies:
+      typescript:
+        specifier: ^5.0.0
+        version: 5.9.3
+
   packages/engine:
     dependencies:
       ajv:
