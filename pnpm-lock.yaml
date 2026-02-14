@@ -17,6 +17,9 @@ importers:
 
   apps/web:
     dependencies:
+      '@ubb/cms-adapter-directus':
+        specifier: workspace:*
+        version: link:../../packages/cms-adapter-directus
       '@ubb/engine':
         specifier: workspace:*
         version: link:../../packages/engine
@@ -29,6 +32,9 @@ importers:
 
   packages/cms-adapter-directus:
     dependencies:
+      '@directus/sdk':
+        specifier: ^11.0.0
+        version: 11.0.3
       '@ubb/cms-adapter':
         specifier: workspace:*
         version: link:../cms-adapter
@@ -51,6 +57,10 @@ importers:
         version: 1.6.1(@types/node@20.19.33)
 
 packages:
+
+  '@directus/sdk@11.0.3':
+    resolution: {integrity: sha512-fHvHFcDhl8AY5quRP4cgLMHTU6F4c4ynmMpXRsi8dnSd38mIvciFyYmOVOh34Wp2N+a1YNYpXPU+NsHkfIheHw==}
+    engines: {node: '>=18.0.0'}
 
   '@esbuild/aix-ppc64@0.21.5':
     resolution: {integrity: sha512-1SDgH6ZSPTlggy1yI6+Dbkiz8xzpHJEVAlF/AM1tHPLsf5STom9rwtjE4hKAF20FfXXNTFqEYXyJNWh1GiZedQ==}
@@ -711,6 +721,8 @@ packages:
     engines: {node: '>=12.20'}
 
 snapshots:
+
+  '@directus/sdk@11.0.3': {}
 
   '@esbuild/aix-ppc64@0.21.5':
     optional: true
