@@ -895,7 +895,7 @@ fields:
       max_length: 255
       numeric_precision: null
       numeric_scale: null
-      is_nullable: true
+      is_nullable: false
       is_unique: true
       is_indexed: false
       is_primary_key: false
@@ -3439,12 +3439,22 @@ fields:
     type: uuid
     meta:
       collection: layer_assets
-      conditions: null
+      conditions:
+        - hidden: false
+          name: Activation Mode Equals Option
+          options:
+            enableCreate: true
+            enableLink: false
+            enableSelect: true
+          rule:
+            _and:
+              - activation_mode:
+                  _eq: option
       display: null
       display_options: null
       field: option_id
       group: null
-      hidden: false
+      hidden: true
       interface: select-dropdown-m2o
       note: null
       options: null
@@ -3466,7 +3476,7 @@ fields:
       numeric_precision: null
       numeric_scale: null
       is_nullable: true
-      is_unique: true
+      is_unique: false
       is_indexed: false
       is_primary_key: false
       is_generated: false
@@ -4321,8 +4331,8 @@ fields:
       max_length: 255
       numeric_precision: null
       numeric_scale: null
-      is_nullable: true
-      is_unique: false
+      is_nullable: false
+      is_unique: true
       is_indexed: false
       is_primary_key: false
       is_generated: false
@@ -4331,34 +4341,43 @@ fields:
       foreign_key_table: null
       foreign_key_column: null
   - collection: manufacturers
-    field: is_active
-    type: boolean
+    field: status
+    type: string
     meta:
       collection: manufacturers
       conditions: null
       display: null
       display_options: null
-      field: is_active
+      field: status
       group: null
       hidden: false
-      interface: boolean
+      interface: select-dropdown
       note: null
-      options: null
+      options:
+        choices:
+          - color: var(--theme--primary)
+            text: Published
+            value: published
+          - color: var(--theme--foreground)
+            text: Draft
+            value: draft
+          - color: var(--theme--warning)
+            text: Archived
+            value: archived
       readonly: false
-      required: false
+      required: true
       sort: 8
-      special:
-        - cast-boolean
+      special: null
       translations: null
       validation: null
       validation_message: null
       width: full
     schema:
-      name: is_active
+      name: status
       table: manufacturers
-      data_type: boolean
-      default_value: true
-      max_length: null
+      data_type: character varying
+      default_value: draft
+      max_length: 255
       numeric_precision: null
       numeric_scale: null
       is_nullable: true
@@ -4788,7 +4807,7 @@ fields:
       max_length: 255
       numeric_precision: null
       numeric_scale: null
-      is_nullable: true
+      is_nullable: false
       is_unique: true
       is_indexed: false
       is_primary_key: false
@@ -5107,47 +5126,6 @@ fields:
       has_auto_increment: false
       foreign_key_table: null
       foreign_key_column: null
-  - collection: model_versions
-    field: manufacturer_id
-    type: uuid
-    meta:
-      collection: model_versions
-      conditions: null
-      display: null
-      display_options: null
-      field: manufacturer_id
-      group: null
-      hidden: false
-      interface: select-dropdown-m2o
-      note: null
-      options:
-        template: '{{name}}'
-      readonly: false
-      required: true
-      sort: 9
-      special:
-        - m2o
-      translations: null
-      validation: null
-      validation_message: null
-      width: full
-    schema:
-      name: manufacturer_id
-      table: model_versions
-      data_type: uuid
-      default_value: null
-      max_length: null
-      numeric_precision: null
-      numeric_scale: null
-      is_nullable: true
-      is_unique: false
-      is_indexed: false
-      is_primary_key: false
-      is_generated: false
-      generation_expression: null
-      has_auto_increment: false
-      foreign_key_table: manufacturers
-      foreign_key_column: id
   - collection: model_versions
     field: model_year
     type: integer
@@ -6140,7 +6118,7 @@ fields:
       numeric_precision: null
       numeric_scale: null
       is_nullable: true
-      is_unique: true
+      is_unique: false
       is_indexed: false
       is_primary_key: false
       is_generated: false
@@ -6977,7 +6955,7 @@ fields:
       numeric_precision: null
       numeric_scale: null
       is_nullable: true
-      is_unique: false
+      is_unique: true
       is_indexed: false
       is_primary_key: false
       is_generated: false
@@ -9814,27 +9792,6 @@ relations:
       constraint_name: model_versions_user_updated_foreign
       on_update: NO ACTION
       on_delete: NO ACTION
-  - collection: model_versions
-    field: manufacturer_id
-    related_collection: manufacturers
-    meta:
-      junction_field: null
-      many_collection: model_versions
-      many_field: manufacturer_id
-      one_allowed_collections: null
-      one_collection: manufacturers
-      one_collection_field: null
-      one_deselect_action: nullify
-      one_field: null
-      sort_field: null
-    schema:
-      table: model_versions
-      column: manufacturer_id
-      foreign_key_table: manufacturers
-      foreign_key_column: id
-      constraint_name: model_versions_manufacturer_id_foreign
-      on_update: NO ACTION
-      on_delete: SET NULL
   - collection: model_versions
     field: boat_model_id
     related_collection: boat_models
