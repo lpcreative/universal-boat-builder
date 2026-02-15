@@ -15,11 +15,20 @@ export async function getPublishedModels(): Promise<PublishedModel[]> {
       },
       fields: [
         "id",
+        "manufacturer_id",
         "slug",
         "name",
         "is_active",
         {
-          model_versions: ["id", "version_label", "status", "published_at"]
+          model_versions: [
+            "id",
+            "manufacturer_id",
+            "model_id",
+            "model_slug",
+            "version_label",
+            "status",
+            "published_at"
+          ]
         }
       ],
       deep: {
@@ -27,10 +36,10 @@ export async function getPublishedModels(): Promise<PublishedModel[]> {
           _filter: {
             status: { _eq: "published" }
           },
-          _sort: ["-published_at"]
+          _sort: ["-published_at", "-id"]
         }
       },
-      sort: ["name"]
+      sort: ["name", "id"]
     })
   );
 
@@ -50,25 +59,29 @@ export async function getModelVersionBundle(modelVersionId: string): Promise<Mod
       limit: 1,
       fields: [
         "id",
+        "manufacturer_id",
         "model_id",
+        "model_slug",
         "version_label",
         "status",
         "published_at",
         {
           option_groups: [
             "id",
+            "model_version_id",
             "key",
             "label",
             "sort",
             {
               questions: [
                 "id",
+                "option_group_id",
                 "key",
                 "label",
                 "input_type",
                 "sort",
                 {
-                  options: ["id", "key", "label", "sort"]
+                  options: ["id", "question_id", "key", "label", "sort"]
                 }
               ]
             }
@@ -77,34 +90,38 @@ export async function getModelVersionBundle(modelVersionId: string): Promise<Mod
         {
           render_views: [
             "id",
+            "model_version_id",
             "key",
             "label",
             "sort",
             {
               layers: [
                 "id",
+                "render_view_id",
                 "key",
                 "sort",
                 "blend_mode",
                 "opacity",
                 {
-                  layer_assets: ["id", "asset_role", "sort", "file"]
+                  layer_assets: ["id", "layer_id", "asset_role", "sort", "file"]
                 },
                 {
                   color_areas: [
                     "id",
+                    "layer_id",
                     "key",
                     "sort",
                     "mask_file",
                     {
                       color_selections: [
                         "id",
+                        "color_area_id",
                         "sort",
                         {
-                          color: ["id", "name", "hex", "sort"]
+                          color: ["id", "color_palette_id", "name", "hex", "sort"]
                         },
                         {
-                          option: ["id", "key", "label", "sort"]
+                          option: ["id", "question_id", "key", "label", "sort"]
                         }
                       ]
                     }
@@ -117,51 +134,52 @@ export async function getModelVersionBundle(modelVersionId: string): Promise<Mod
         {
           color_palettes: [
             "id",
+            "model_version_id",
             "key",
             "label",
             "sort",
             {
-              colors: ["id", "name", "hex", "sort"]
+              colors: ["id", "color_palette_id", "name", "hex", "sort"]
             }
           ]
         },
         {
-          rules: ["id", "scope", "priority", "enabled", "rule_json"]
+          rules: ["id", "model_version_id", "scope", "priority", "enabled", "rule_json"]
         }
       ],
       deep: {
         option_groups: {
-          _sort: ["sort"],
+          _sort: ["sort", "id"],
           questions: {
-            _sort: ["sort"],
+            _sort: ["sort", "id"],
             options: {
-              _sort: ["sort"]
+              _sort: ["sort", "id"]
             }
           }
         },
         render_views: {
-          _sort: ["sort"],
+          _sort: ["sort", "id"],
           layers: {
-            _sort: ["sort"],
+            _sort: ["sort", "id"],
             layer_assets: {
-              _sort: ["sort"]
+              _sort: ["sort", "id"]
             },
             color_areas: {
-              _sort: ["sort"],
+              _sort: ["sort", "id"],
               color_selections: {
-                _sort: ["sort"]
+                _sort: ["sort", "id"]
               }
             }
           }
         },
         color_palettes: {
-          _sort: ["sort"],
+          _sort: ["sort", "id"],
           colors: {
-            _sort: ["sort"]
+            _sort: ["sort", "id"]
           }
         },
         rules: {
-          _sort: ["priority"]
+          _sort: ["priority", "id"]
         }
       }
     })
