@@ -1,10 +1,5 @@
-type DirectusErrorEnvelope = {
-  errors?: Array<{
-    message?: string;
-    extensions?: {
-      code?: string;
-    };
-  }>;
+type DirectusErrorPayload = {
+  errors?: unknown[];
 };
 
 function setExitCode(code: number): void {
@@ -14,37 +9,39 @@ function setExitCode(code: number): void {
   }
 }
 
+function safeJson(value: unknown): string {
+  try {
+    return JSON.stringify(value, null, 2);
+  } catch {
+    return String(value);
+  }
+}
+
 function formatError(error: unknown): string {
-  const message = error instanceof Error ? error.message : String(error);
-  const status =
-    typeof error === "object" && error !== null && "status" in error
-      ? String((error as { status?: number | string }).status)
-      : undefined;
-  const data =
-    typeof error === "object" && error !== null && "data" in error
-      ? ((error as { data?: unknown }).data as DirectusErrorEnvelope | undefined)
-      : undefined;
-
-  const firstCode = data?.errors?.[0]?.extensions?.code;
-  const firstMessage = data?.errors?.[0]?.message;
-
-  if (status === "401" || firstCode === "INVALID_CREDENTIALS" || firstCode === "INVALID_TOKEN") {
-    return `Authentication error (401/invalid token). ${firstMessage ?? message}`;
-  }
-
-  if (status === "403" || firstCode === "FORBIDDEN") {
-    return `Permissions error (403/forbidden). ${firstMessage ?? message}`;
-  }
-
   if (
-    firstCode === "INVALID_QUERY" ||
-    firstCode === "INVALID_PAYLOAD" ||
-    /invalid query|field .*doesn't exist|cannot read properties/i.test(`${firstMessage ?? ""} ${message}`)
+    typeof error === "object" &&
+    error !== null &&
+    "errors" in error &&
+    Array.isArray((error as DirectusErrorPayload).errors)
   ) {
-    return `Schema/query path error. ${firstMessage ?? message}`;
+    return safeJson(error);
   }
 
-  return `${firstMessage ?? message}${status ? ` (status: ${status})` : ""}`;
+  if (error instanceof Error) {
+    const stack = error.stack
+      ?.split("\n")
+      .slice(0, 10)
+      .join("\n");
+
+    return [
+      `${error.name}: ${error.message}`,
+      stack
+    ]
+      .filter((line): line is string => Boolean(line))
+      .join("\n");
+  }
+
+  return safeJson(error);
 }
 
 function countQuestions(groups: Array<{ questions?: Array<{ options?: unknown[] }> }>): {
@@ -67,7 +64,10 @@ function countQuestions(groups: Array<{ questions?: Array<{ options?: unknown[] 
 }
 
 function countRenderTree(
-  views: Array<{ layers?: Array<{ layer_assets?: unknown[]; color_areas?: Array<{ color_selections?: unknown[] }> }> }>
+  views: Array<{
+    layers?: Array<{ layer_assets?: unknown[]; color_areas?: Array<{ color_selections?: unknown[] }> }>;
+    color_areas?: Array<{ color_selections?: unknown[] }>;
+  }>
 ): {
   layers: number;
   layerAssets: number;
@@ -86,12 +86,17 @@ function countRenderTree(
     for (const layer of viewLayers) {
       layerAssets += (layer.layer_assets ?? []).length;
 
-      const areas = layer.color_areas ?? [];
-      colorAreas += areas.length;
-
-      for (const area of areas) {
+      const layerAreas = layer.color_areas ?? [];
+      colorAreas += layerAreas.length;
+      for (const area of layerAreas) {
         colorSelections += (area.color_selections ?? []).length;
       }
+    }
+
+    const viewAreas = view.color_areas ?? [];
+    colorAreas += viewAreas.length;
+    for (const area of viewAreas) {
+      colorSelections += (area.color_selections ?? []).length;
     }
   }
 
@@ -102,7 +107,16 @@ function countPaletteColors(palettes: Array<{ colors?: unknown[] }>): number {
   return palettes.reduce((total, palette) => total + (palette.colors ?? []).length, 0);
 }
 
+function readEnv(name: string): string | undefined {
+  const processLike = (globalThis as { process?: { env?: Record<string, string | undefined> } }).process;
+  return processLike?.env?.[name];
+}
+
 async function main(): Promise<void> {
+  const directusApiUrl = readEnv("DIRECTUS_API_URL") ?? "<unset>";
+  console.log("Directus connectivity check");
+  console.log(`- DIRECTUS_API_URL: ${directusApiUrl}`);
+
   try {
     const { getModelVersionBundle, getPublishedModels } = await import("../directus-queries.js");
     const models = await getPublishedModels();
@@ -117,26 +131,16 @@ async function main(): Promise<void> {
     const publishedVersions = models.flatMap((model) => model.model_versions ?? []);
     const firstPublished = publishedVersions[0];
 
-    console.log("Directus connectivity check");
     console.log(`- manufacturers (derived from models): ${manufacturerIds.size}`);
     console.log(`- models with published versions: ${models.length}`);
     console.log(`- published model_versions: ${publishedVersions.length}`);
 
     if (!firstPublished) {
-      console.log("- first published model_version: none");
+      console.log("- first published version id: none");
       return;
     }
 
-    const inferredYear =
-      typeof (firstPublished as { year?: unknown }).year === "number"
-        ? String((firstPublished as { year?: number }).year)
-        : firstPublished.version_label.match(/\b(19|20)\d{2}\b/u)?.[0];
-
-    console.log(
-      `- first published model_version: id=${firstPublished.id} label=${firstPublished.version_label}${
-        inferredYear ? ` year=${inferredYear}` : ""
-      }`
-    );
+    console.log(`- first published version id: ${firstPublished.id}`);
 
     const bundle = await getModelVersionBundle(firstPublished.id);
 
@@ -149,10 +153,14 @@ async function main(): Promise<void> {
     const palettes = bundle.color_palettes ?? [];
 
     const qCounts = countQuestions(optionGroups);
-    const renderCounts = countRenderTree(renderViews);
+    const renderCounts = countRenderTree(
+      renderViews as Array<{
+        layers?: Array<{ layer_assets?: unknown[]; color_areas?: Array<{ color_selections?: unknown[] }> }>;
+        color_areas?: Array<{ color_selections?: unknown[] }>;
+      }>
+    );
     const totalPaletteColors = countPaletteColors(palettes);
 
-    console.log("Bundle summary");
     console.log(`- option_groups/questions/options: ${optionGroups.length}/${qCounts.questions}/${qCounts.options}`);
     console.log(
       `- render_views/layers/layer_assets: ${renderViews.length}/${renderCounts.layers}/${renderCounts.layerAssets}`
@@ -163,7 +171,18 @@ async function main(): Promise<void> {
     console.log(`- rules: ${(bundle.rules ?? []).length}`);
   } catch (error) {
     console.error("Directus connectivity check failed");
-    console.error(`- ${formatError(error)}`);
+    console.error(formatError(error));
+    if (
+      typeof error === "object" &&
+      error !== null &&
+      "data" in error &&
+      typeof (error as { data?: unknown }).data === "object" &&
+      (error as { data?: unknown }).data !== null &&
+      "errors" in ((error as { data?: { errors?: unknown[] } }).data ?? {})
+    ) {
+      console.error("Directus API error payload:");
+      console.error(safeJson((error as { data?: unknown }).data));
+    }
     setExitCode(1);
   }
 }
