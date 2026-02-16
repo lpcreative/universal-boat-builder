@@ -31,19 +31,15 @@ Publishing visibility is controlled by `model_versions.status = "published"` (Di
 
 Minimum read permissions for an app reader/service account token:
 
-- `manufacturers`
 - `model_series`
 - `boat_models`
 - `model_versions`
-- `option_groups`
-- `questions`
-- `options`
+- `version_revisions`
+- `items`
+- `version_items`
+- `flows`
+- `flow_steps`
+- `flow_sections`
+- `selection_groups`
 - `render_views`
-- `layers`
-- `layer_assets`
-- `color_palettes`
-- `colors`
-- `color_areas`
-- `color_selections`
-- `rules`
-- `directus_files` (required if file relations are resolved)
+- `render_layers`

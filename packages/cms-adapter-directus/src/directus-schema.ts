@@ -1,192 +1,168 @@
-export interface ManufacturerRecord {
-  id: string;
-  slug: string;
-  name: string;
-  is_active: boolean;
-}
+export type DirectusStatus = "draft" | "published" | "archived";
 
 export interface ModelSeriesRecord {
   id: string;
-  manufacturer_id?: string | null;
-  slug?: string | null;
+  key?: string | null;
   name?: string | null;
-  sort?: number | null;
-}
-
-export interface ColorRecord {
-  id: string;
-  name: string;
-  hex: string;
-  color_palette_id?: string | null;
-  sort?: number | null;
-}
-
-export interface OptionRecord {
-  id: string;
-  question_id?: string | null;
-  key: string;
-  code?: string | null;
-  label: string;
   description?: string | null;
-  price_msrp?: number | null;
-  price_dealer?: number | null;
-  price_mode?: string | null;
-  media_mode?: string | null;
-  is_default?: boolean | null;
-  is_available?: boolean | null;
+  default_flow_template_key?: string | null;
   sort?: number | null;
-}
-
-export interface QuestionRecord {
-  id: string;
-  option_group_id?: string | null;
-  key: string;
-  label: string;
-  input_type?: string | null;
-  is_required?: boolean | null;
-  default_value?: string | null;
-  sort?: number | null;
-  options?: OptionRecord[];
-}
-
-export interface OptionGroupRecord {
-  id: string;
-  model_version_id?: string | null;
-  key: string;
-  label: string;
-  sort?: number | null;
-  questions?: QuestionRecord[];
-}
-
-export interface LayerAssetRecord {
-  id: string;
-  layer_id?: string | null;
-  option_id?: string | null;
-  asset_role?: string | null;
-  sort?: number | null;
-  file?: string | null;
-}
-
-export interface ColorSelectionRecord {
-  id: string;
-  color_area_id?: string | null;
-  question_id?: string | null;
-  allowed_palette_id?: string | null;
-  sort?: number | null;
-  color?: ColorRecord | null;
-  option?: OptionRecord | null;
-}
-
-export interface ColorAreaRecord {
-  id: string;
-  layer_id?: string | null;
-  render_view_id?: string | null;
-  key: string;
-  sort?: number | null;
-  mask_file?: string | null;
-  default_color_id?: string | null;
-  color_selections?: ColorSelectionRecord[];
-}
-
-export interface LayerRecord {
-  id: string;
-  render_view_id?: string | null;
-  key: string;
-  z_index?: number | null;
-  sort?: number | null;
-  blend_mode?: string | null;
-  opacity?: number | null;
-  layer_assets?: LayerAssetRecord[];
-  color_areas?: ColorAreaRecord[];
-}
-
-export interface RenderViewRecord {
-  id: string;
-  model_version_id?: string | null;
-  key: string;
-  label: string;
-  base_image?: string | null;
-  sort?: number | null;
-  layers?: LayerRecord[];
-}
-
-export interface ColorPaletteRecord {
-  id: string;
-  model_version_id?: string | null;
-  key: string;
-  label: string;
-  sort?: number | null;
-  colors?: ColorRecord[];
-}
-
-export interface RuleRecord {
-  id: string;
-  model_version_id?: string | null;
-  scope?: string | null;
-  priority?: number | null;
-  enabled?: boolean | null;
-  rule_json?: Record<string, unknown> | null;
-}
-
-export interface ModelVersionRecord {
-  id: string;
-  manufacturer_id?: string | null;
-  model_id: string;
-  model_slug?: string | null;
-  model_year?: number | null;
-  version_label: string;
-  status: "draft" | "published" | "archived";
-  published_at: string | null;
-  compiled_hash?: string | null;
-  compiled_at?: string | null;
-  option_groups?: OptionGroupRecord[];
-  render_views?: RenderViewRecord[];
-  color_palettes?: ColorPaletteRecord[];
-  rules?: RuleRecord[];
 }
 
 export interface BoatModelRecord {
   id: string;
-  manufacturer_id?: string | null;
-  slug: string;
+  model_code?: string | null;
   name: string;
-  is_active: boolean;
-  model_versions?: ModelVersionRecord[];
+  series?: string | null;
+  default_flow_template_key?: string | null;
+  sort?: number | null;
 }
 
-export interface DirectusFileRecord {
+export interface ModelVersionRecord {
   id: string;
-  title?: string | null;
-  filename_download?: string | null;
-  type?: string | null;
+  boat_model: string;
+  year?: number | null;
+  trim?: string | null;
+  notes?: string | null;
+  published_revision?: string | null;
+  sort?: number | null;
+  status: DirectusStatus;
+}
+
+export interface VersionRevisionRecord {
+  id: string;
+  model_version: string;
+  revision_number?: number | null;
+  effective_date?: string | null;
+  change_log?: string | null;
+  sort?: number | null;
+  status: DirectusStatus;
+}
+
+export interface ItemRecord {
+  id: string;
+  key?: string | null;
+  label_default: string;
+  description?: string | null;
+  internal_code?: string | null;
+  vendor_code?: string | null;
+  fulfillment?: string | null;
+  item_category?: string | null;
+  sort?: number | null;
+}
+
+export interface VersionItemRecord {
+  id: string;
+  revision: string;
+  item: string;
+  label_override?: string | null;
+  msrp?: number | null;
+  dealer_price?: number | null;
+  is_available?: boolean | null;
+  is_included?: boolean | null;
+  is_default?: boolean | null;
+  source_ref?: string | null;
+  notes?: string | null;
+  build_notes?: string | null;
+  sort_hint?: number | null;
+  sort?: number | null;
+  item_detail?: ItemRecord | null;
+}
+
+export interface FlowRecord {
+  id: string;
+  revision: string;
+  template_key: string;
+  title: string;
+  audience?: string | null;
+  sort?: number | null;
+}
+
+export interface FlowStepRecord {
+  id: string;
+  flow: string;
+  key: string;
+  title: string;
+  help_text?: string | null;
+  sort?: number | null;
+}
+
+export interface FlowSectionRecord {
+  id: string;
+  step: string;
+  title: string;
+  sort?: number | null;
+}
+
+export type SelectionMode = "single" | "multi" | "boolean" | "quantity";
+
+export interface SelectionGroupRecord {
+  id: string;
+  section: string;
+  key: string;
+  title: string;
+  selection_mode: SelectionMode;
+  min_select?: number | null;
+  max_select?: number | null;
+  is_required?: boolean | null;
+  help_text?: string | null;
+  sort?: number | null;
+}
+
+export interface RenderViewRecord {
+  id: string;
+  revision: string;
+  key: string;
+  title: string;
+  sort?: number | null;
+}
+
+export interface RenderLayerRecord {
+  id: string;
+  render_view: string;
+  key: string;
+  layer_type?: string | null;
+  asset: string;
+  mask_asset?: string | null;
+  sort?: number | null;
+}
+
+export interface PublishedModelVersionRecord extends ModelVersionRecord {
+  version_label: string;
+  published_at: string | null;
 }
 
 export interface DirectusSchema {
-  manufacturers: ManufacturerRecord[];
   model_series: ModelSeriesRecord[];
   boat_models: BoatModelRecord[];
   model_versions: ModelVersionRecord[];
-  option_groups: OptionGroupRecord[];
-  questions: QuestionRecord[];
-  options: OptionRecord[];
+  version_revisions: VersionRevisionRecord[];
+  items: ItemRecord[];
+  version_items: VersionItemRecord[];
+  flows: FlowRecord[];
+  flow_steps: FlowStepRecord[];
+  flow_sections: FlowSectionRecord[];
+  selection_groups: SelectionGroupRecord[];
   render_views: RenderViewRecord[];
-  layers: LayerRecord[];
-  layer_assets: LayerAssetRecord[];
-  color_palettes: ColorPaletteRecord[];
-  colors: ColorRecord[];
-  color_areas: ColorAreaRecord[];
-  color_selections: ColorSelectionRecord[];
-  rules: RuleRecord[];
-  directus_files: DirectusFileRecord[];
+  render_layers: RenderLayerRecord[];
 }
 
 export interface PublishedModel extends BoatModelRecord {
-  model_versions: ModelVersionRecord[];
+  slug: string;
+  model_versions: PublishedModelVersionRecord[];
 }
 
 export interface ModelVersionBundle extends ModelVersionRecord {
-  option_groups: OptionGroupRecord[];
+  model_year: number | null;
+  version_label: string;
+  published_at: string | null;
+  current_revision: VersionRevisionRecord | null;
+  version_revisions: VersionRevisionRecord[];
+  version_items: VersionItemRecord[];
+  flows: FlowRecord[];
+  flow_steps: FlowStepRecord[];
+  flow_sections: FlowSectionRecord[];
+  selection_groups: SelectionGroupRecord[];
   render_views: RenderViewRecord[];
-  color_palettes: ColorPaletteRecord[];
-  rules: RuleRecord[];
+  render_layers: RenderLayerRecord[];
 }

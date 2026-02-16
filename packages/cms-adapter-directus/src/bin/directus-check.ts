@@ -1,3 +1,6 @@
+import { readItems } from "@directus/sdk";
+import { directusClient } from "../directus-client.js";
+
 type DirectusErrorPayload = {
   errors?: Array<{
     message?: unknown;
@@ -47,10 +50,7 @@ function formatError(error: unknown): string {
       .slice(0, 10)
       .join("\n");
 
-    return [
-      `${error.name}: ${error.message}`,
-      stack
-    ]
+    return [`${error.name}: ${error.message}`, stack]
       .filter((line): line is string => Boolean(line))
       .join("\n");
   }
@@ -58,72 +58,94 @@ function formatError(error: unknown): string {
   return safeJson(error);
 }
 
-function countQuestions(groups: Array<{ questions?: Array<{ options?: unknown[] }> }>): {
-  questions: number;
-  options: number;
-} {
-  let questions = 0;
-  let options = 0;
-
-  for (const group of groups) {
-    const groupQuestions = group.questions ?? [];
-    questions += groupQuestions.length;
-
-    for (const question of groupQuestions) {
-      options += (question.options ?? []).length;
-    }
-  }
-
-  return { questions, options };
-}
-
-function countRenderTree(
-  views: Array<{
-    layers?: Array<{ layer_assets?: unknown[]; color_areas?: Array<{ color_selections?: unknown[] }> }>;
-    color_areas?: Array<{ color_selections?: unknown[] }>;
-  }>
-): {
-  layers: number;
-  layerAssets: number;
-  colorAreas: number;
-  colorSelections: number;
-} {
-  let layers = 0;
-  let layerAssets = 0;
-  let colorAreas = 0;
-  let colorSelections = 0;
-
-  for (const view of views) {
-    const viewLayers = view.layers ?? [];
-    layers += viewLayers.length;
-
-    for (const layer of viewLayers) {
-      layerAssets += (layer.layer_assets ?? []).length;
-
-      const layerAreas = layer.color_areas ?? [];
-      colorAreas += layerAreas.length;
-      for (const area of layerAreas) {
-        colorSelections += (area.color_selections ?? []).length;
-      }
-    }
-
-    const viewAreas = view.color_areas ?? [];
-    colorAreas += viewAreas.length;
-    for (const area of viewAreas) {
-      colorSelections += (area.color_selections ?? []).length;
-    }
-  }
-
-  return { layers, layerAssets, colorAreas, colorSelections };
-}
-
-function countPaletteColors(palettes: Array<{ colors?: unknown[] }>): number {
-  return palettes.reduce((total, palette) => total + (palette.colors ?? []).length, 0);
-}
-
 function readEnv(name: string): string | undefined {
   const processLike = (globalThis as { process?: { env?: Record<string, string | undefined> } }).process;
   return processLike?.env?.[name];
+}
+
+async function validateRequiredSchema(): Promise<void> {
+  const requiredCollections: Record<string, string[]> = {
+    boat_models: ["id", "name", "model_code", "sort"],
+    model_versions: ["id", "boat_model", "year", "trim", "status", "published_revision", "sort"],
+    version_revisions: ["id", "model_version", "revision_number", "effective_date", "status", "sort"],
+    version_items: ["id", "revision", "item", "msrp", "dealer_price", "is_available", "is_default", "sort"],
+    items: ["id", "label_default", "key", "sort"],
+    flows: ["id", "revision", "template_key", "title", "sort"],
+    flow_steps: ["id", "flow", "key", "title", "sort"],
+    flow_sections: ["id", "step", "title", "sort"],
+    selection_groups: ["id", "section", "key", "title", "selection_mode", "sort"],
+    render_views: ["id", "revision", "key", "title", "sort"],
+    render_layers: ["id", "render_view", "key", "asset", "mask_asset", "sort"]
+  };
+
+  const failures: string[] = [];
+
+  for (const [collection, fields] of Object.entries(requiredCollections)) {
+    try {
+      await directusClient.request(
+        readItems(collection as never, { limit: 1, fields } as never) as never
+      );
+    } catch (error) {
+      const formatted = formatError(error).split("\n")[0] ?? "unknown error";
+      failures.push(`${collection}: ${formatted}`);
+    }
+  }
+
+  if (failures.length > 0) {
+    throw new Error(
+      `Schema is missing required collections/fields for cms-adapter-directus:\n${failures
+        .sort()
+        .map((line) => `- ${line}`)
+        .join("\n")}`
+    );
+  }
+}
+
+function countBundle(bundle: {
+  version_items?: unknown[];
+  flows?: unknown[];
+  flow_steps?: unknown[];
+  flow_sections?: unknown[];
+  selection_groups?: unknown[];
+  render_views?: unknown[];
+  render_layers?: Array<{ asset?: string | null; mask_asset?: string | null }>;
+  version_revisions?: unknown[];
+}): {
+  revisions: number;
+  versionItems: number;
+  flows: number;
+  flowSteps: number;
+  flowSections: number;
+  selectionGroups: number;
+  renderViews: number;
+  renderLayers: number;
+  renderLayerAssets: number;
+  renderLayerMaskAssets: number;
+} {
+  let renderLayerAssets = 0;
+  let renderLayerMaskAssets = 0;
+
+  for (const layer of bundle.render_layers ?? []) {
+    if (typeof layer.asset === "string" && layer.asset.length > 0) {
+      renderLayerAssets += 1;
+    }
+    if (typeof layer.mask_asset === "string" && layer.mask_asset.length > 0) {
+      renderLayerMaskAssets += 1;
+    }
+  }
+
+  return {
+    revisions: (bundle.version_revisions ?? []).length,
+    versionItems: (bundle.version_items ?? []).length,
+    flows: (bundle.flows ?? []).length,
+    flowSteps: (bundle.flow_steps ?? []).length,
+    flowSections: (bundle.flow_sections ?? []).length,
+    selectionGroups: (bundle.selection_groups ?? []).length,
+    renderViews: (bundle.render_views ?? []).length,
+    renderLayers: (bundle.render_layers ?? []).length,
+    renderLayerAssets,
+    renderLayerMaskAssets
+  };
 }
 
 async function main(): Promise<void> {
@@ -132,20 +154,14 @@ async function main(): Promise<void> {
   console.log(`- DIRECTUS_API_URL: ${directusApiUrl}`);
 
   try {
+    await validateRequiredSchema();
+
     const { getModelVersionBundle, getPublishedModels } = await import("../directus-queries.js");
     const models = await getPublishedModels();
-
-    const manufacturerIds = new Set<string>();
-    for (const model of models) {
-      if (model.manufacturer_id) {
-        manufacturerIds.add(model.manufacturer_id);
-      }
-    }
 
     const publishedVersions = models.flatMap((model) => model.model_versions ?? []);
     const firstPublished = publishedVersions[0];
 
-    console.log(`- manufacturers (derived from models): ${manufacturerIds.size}`);
     console.log(`- models count: ${models.length}`);
     console.log(`- published model_versions: ${publishedVersions.length}`);
 
@@ -162,24 +178,22 @@ async function main(): Promise<void> {
       throw new Error(`Published model_version ${firstPublished.id} could not be resolved as a bundle.`);
     }
 
-    const optionGroups = bundle.option_groups ?? [];
-    const renderViews = bundle.render_views ?? [];
-    const palettes = bundle.color_palettes ?? [];
-
-    const qCounts = countQuestions(optionGroups);
-    const renderCounts = countRenderTree(
-      renderViews as Array<{
-        layers?: Array<{ layer_assets?: unknown[]; color_areas?: Array<{ color_selections?: unknown[] }> }>;
-        color_areas?: Array<{ color_selections?: unknown[] }>;
-      }>
-    );
-    const totalPaletteColors = countPaletteColors(palettes);
+    const counts = countBundle(bundle as {
+      version_items?: unknown[];
+      flows?: unknown[];
+      flow_steps?: unknown[];
+      flow_sections?: unknown[];
+      selection_groups?: unknown[];
+      render_views?: unknown[];
+      render_layers?: Array<{ asset?: string | null; mask_asset?: string | null }>;
+      version_revisions?: unknown[];
+    });
 
     console.log(
-      `- bundle counts (groups/questions/options/views/layers/assets/palettes/colors/areas/selections/rules): ` +
-        `${optionGroups.length}/${qCounts.questions}/${qCounts.options}/${renderViews.length}/${renderCounts.layers}/` +
-        `${renderCounts.layerAssets}/${palettes.length}/${totalPaletteColors}/${renderCounts.colorAreas}/` +
-        `${renderCounts.colorSelections}/${(bundle.rules ?? []).length}`
+      "- bundle counts (revisions/version_items/flows/steps/sections/groups/render_views/render_layers/assets/mask_assets): " +
+        `${counts.revisions}/${counts.versionItems}/${counts.flows}/${counts.flowSteps}/${counts.flowSections}/` +
+        `${counts.selectionGroups}/${counts.renderViews}/${counts.renderLayers}/${counts.renderLayerAssets}/` +
+        `${counts.renderLayerMaskAssets}`
     );
   } catch (error) {
     console.error("Directus connectivity check failed");
