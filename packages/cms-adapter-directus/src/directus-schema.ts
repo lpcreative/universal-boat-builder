@@ -1,4 +1,6 @@
 export type DirectusStatus = "draft" | "published" | "archived";
+export type RenderLayerType = "image" | "mask" | "tint" | "decal";
+export type RenderBlendMode = "multiply" | "overlay" | "screen" | "normal";
 
 export interface ModelSeriesRecord {
   id: string;
@@ -48,6 +50,8 @@ export interface ItemRecord {
   vendor_code?: string | null;
   fulfillment?: string | null;
   item_category?: string | null;
+  color_hex?: string | null;
+  is_color?: boolean | null;
   sort?: number | null;
 }
 
@@ -106,7 +110,45 @@ export interface SelectionGroupRecord {
   max_select?: number | null;
   is_required?: boolean | null;
   help_text?: string | null;
+  color_area?: string | null;
+  color_palette?: string | null;
+  color_area_detail?: ColorAreaRecord | null;
+  color_palette_detail?: ColorPaletteRecord | null;
   sort?: number | null;
+}
+
+export interface GroupOptionRecord {
+  id: string;
+  selection_group: string;
+  version_item: string;
+  label_override?: string | null;
+  default_state?: string | null;
+  override_msrp?: number | null;
+  override_dealer_price?: number | null;
+  sort?: number | null;
+}
+
+export interface ColorAreaRecord {
+  id: string;
+  key: string;
+  title: string;
+  sort?: number | null;
+}
+
+export interface ColorPaletteRecord {
+  id: string;
+  revision: string;
+  key: string;
+  title: string;
+  sort?: number | null;
+}
+
+export interface ColorPaletteItemRecord {
+  id: string;
+  color_palette: string;
+  item: string;
+  sort?: number | null;
+  item_detail?: ItemRecord | null;
 }
 
 export interface RenderViewRecord {
@@ -121,9 +163,13 @@ export interface RenderLayerRecord {
   id: string;
   render_view: string;
   key: string;
-  layer_type?: string | null;
+  layer_type: RenderLayerType;
   asset: string;
   mask_asset?: string | null;
+  color_area?: string | null;
+  color_area_detail?: ColorAreaRecord | null;
+  blend_mode?: RenderBlendMode | null;
+  opacity?: number | null;
   sort?: number | null;
 }
 
@@ -143,6 +189,10 @@ export interface DirectusSchema {
   flow_steps: FlowStepRecord[];
   flow_sections: FlowSectionRecord[];
   selection_groups: SelectionGroupRecord[];
+  group_options: GroupOptionRecord[];
+  color_areas: ColorAreaRecord[];
+  color_palettes: ColorPaletteRecord[];
+  color_palette_items: ColorPaletteItemRecord[];
   render_views: RenderViewRecord[];
   render_layers: RenderLayerRecord[];
 }
@@ -163,6 +213,10 @@ export interface ModelVersionBundle extends ModelVersionRecord {
   flow_steps: FlowStepRecord[];
   flow_sections: FlowSectionRecord[];
   selection_groups: SelectionGroupRecord[];
+  group_options: GroupOptionRecord[];
+  color_areas: ColorAreaRecord[];
+  color_palettes: ColorPaletteRecord[];
+  color_palette_items: ColorPaletteItemRecord[];
   render_views: RenderViewRecord[];
   render_layers: RenderLayerRecord[];
 }

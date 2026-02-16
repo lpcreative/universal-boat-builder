@@ -9,7 +9,8 @@
     "build": "tsc -p tsconfig.json",
     "dev": "tsc -p tsconfig.json -w",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "compile:version": "node --enable-source-maps dist/bin/compile-version.js"
+    "compile:version": "node --enable-source-maps dist/bin/compile-version.js",
+    "render:harness": "node --enable-source-maps dist/bin/mask-tint-harness.js"
   },
   "exports": {
     ".": {

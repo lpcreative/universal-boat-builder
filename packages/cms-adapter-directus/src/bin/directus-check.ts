@@ -69,13 +69,28 @@ async function validateRequiredSchema(): Promise<void> {
     model_versions: ["id", "boat_model", "year", "trim", "status", "published_revision", "sort"],
     version_revisions: ["id", "model_version", "revision_number", "effective_date", "status", "sort"],
     version_items: ["id", "revision", "item", "msrp", "dealer_price", "is_available", "is_default", "sort"],
-    items: ["id", "label_default", "key", "sort"],
+    items: ["id", "label_default", "key", "color_hex", "sort"],
     flows: ["id", "revision", "template_key", "title", "sort"],
     flow_steps: ["id", "flow", "key", "title", "sort"],
     flow_sections: ["id", "step", "title", "sort"],
-    selection_groups: ["id", "section", "key", "title", "selection_mode", "sort"],
+    selection_groups: ["id", "section", "key", "title", "selection_mode", "color_area", "color_palette", "sort"],
+    group_options: ["id", "selection_group", "version_item", "sort"],
+    color_areas: ["id", "key", "title", "sort"],
+    color_palettes: ["id", "revision", "key", "title", "sort"],
+    color_palette_items: ["id", "color_palette", "item", "sort"],
     render_views: ["id", "revision", "key", "title", "sort"],
-    render_layers: ["id", "render_view", "key", "asset", "mask_asset", "sort"]
+    render_layers: [
+      "id",
+      "render_view",
+      "key",
+      "layer_type",
+      "asset",
+      "mask_asset",
+      "color_area",
+      "blend_mode",
+      "opacity",
+      "sort"
+    ]
   };
 
   const failures: string[] = [];

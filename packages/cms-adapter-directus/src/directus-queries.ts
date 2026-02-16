@@ -2,7 +2,11 @@ import { readItems } from "@directus/sdk";
 import { directusClient } from "./directus-client.js";
 import type {
   BoatModelRecord,
+  ColorAreaRecord,
+  ColorPaletteItemRecord,
+  ColorPaletteRecord,
   FlowRecord,
+  GroupOptionRecord,
   FlowSectionRecord,
   FlowStepRecord,
   ItemRecord,
@@ -11,6 +15,7 @@ import type {
   PublishedModel,
   PublishedModelVersionRecord,
   RenderLayerRecord,
+  RenderLayerType,
   RenderViewRecord,
   SelectionGroupRecord,
   VersionItemRecord,
@@ -106,6 +111,37 @@ function asStatus(value: unknown): "draft" | "published" | "archived" {
   return "draft";
 }
 
+function asRawRecord(value: unknown): RawRecord | null {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    return null;
+  }
+  return value as RawRecord;
+}
+
+function asRelationId(value: unknown): string | null {
+  const directValue = asString(value);
+  if (directValue) {
+    return directValue;
+  }
+
+  const relationRecord = asRawRecord(value);
+  return asString(relationRecord?.id);
+}
+
+function asLayerType(value: unknown): RenderLayerType {
+  if (value === "mask" || value === "tint" || value === "decal") {
+    return value;
+  }
+  return "image";
+}
+
+function asBlendMode(value: unknown): RenderLayerRecord["blend_mode"] {
+  if (value === "multiply" || value === "overlay" || value === "screen" || value === "normal") {
+    return value;
+  }
+  return null;
+}
+
 function toVersionLabel(year: number | null, trim: string | null, fallback: string): string {
   const parts = [year ? String(year) : null, trim].filter((part): part is string => Boolean(part));
   if (parts.length > 0) {
@@ -133,6 +169,62 @@ function toVersionRevisionRecord(row: RawRecord): VersionRevisionRecord | null {
     change_log: asString(row.change_log),
     sort: asNumber(row.sort),
     status: asStatus(row.status)
+  };
+}
+
+function toItemRecord(row: RawRecord): ItemRecord | null {
+  const id = asString(row.id);
+  const labelDefault = asString(row.label_default);
+  if (!id || !labelDefault) {
+    return null;
+  }
+
+  return {
+    id,
+    key: asString(row.key),
+    label_default: labelDefault,
+    description: asString(row.description),
+    internal_code: asString(row.internal_code),
+    vendor_code: asString(row.vendor_code),
+    fulfillment: asString(row.fulfillment),
+    item_category: asString(row.item_category),
+    color_hex: asString(row.color_hex),
+    is_color: asBoolean(row.is_color),
+    sort: asNumber(row.sort)
+  };
+}
+
+function toColorAreaRecord(row: RawRecord): ColorAreaRecord | null {
+  const id = asString(row.id);
+  const key = asString(row.key);
+  const title = asString(row.title);
+  if (!id || !key || !title) {
+    return null;
+  }
+
+  return {
+    id,
+    key,
+    title,
+    sort: asNumber(row.sort)
+  };
+}
+
+function toColorPaletteRecord(row: RawRecord): ColorPaletteRecord | null {
+  const id = asString(row.id);
+  const revision = asString(row.revision);
+  const key = asString(row.key);
+  const title = asString(row.title);
+  if (!id || !revision || !key || !title) {
+    return null;
+  }
+
+  return {
+    id,
+    revision,
+    key,
+    title,
+    sort: asNumber(row.sort)
   };
 }
 
@@ -395,6 +487,8 @@ export async function getModelVersionBundle(modelVersionId: string): Promise<Mod
           "vendor_code",
           "fulfillment",
           "item_category",
+          "color_hex",
+          "is_color",
           "sort"
         ],
         sort: ["sort", "id"]
@@ -403,23 +497,10 @@ export async function getModelVersionBundle(modelVersionId: string): Promise<Mod
 
   const itemsById = new Map<string, ItemRecord>();
   for (const row of itemRows) {
-    const id = asString(row.id);
-    const labelDefault = asString(row.label_default);
-    if (!id || !labelDefault) {
-      continue;
+    const itemRecord = toItemRecord(row);
+    if (itemRecord) {
+      itemsById.set(itemRecord.id, itemRecord);
     }
-
-    itemsById.set(id, {
-      id,
-      key: asString(row.key),
-      label_default: labelDefault,
-      description: asString(row.description),
-      internal_code: asString(row.internal_code),
-      vendor_code: asString(row.vendor_code),
-      fulfillment: asString(row.fulfillment),
-      item_category: asString(row.item_category),
-      sort: asNumber(row.sort)
-    });
   }
 
   const versionItems: VersionItemRecord[] = [];
@@ -562,6 +643,17 @@ export async function getModelVersionBundle(modelVersionId: string): Promise<Mod
           "max_select",
           "is_required",
           "help_text",
+          "color_area",
+          "color_area.id",
+          "color_area.key",
+          "color_area.title",
+          "color_area.sort",
+          "color_palette",
+          "color_palette.id",
+          "color_palette.revision",
+          "color_palette.key",
+          "color_palette.title",
+          "color_palette.sort",
           "sort"
         ],
         sort: ["sort", "id"]
@@ -583,6 +675,9 @@ export async function getModelVersionBundle(modelVersionId: string): Promise<Mod
       continue;
     }
 
+    const colorAreaRow = asRawRecord(row.color_area);
+    const colorPaletteRow = asRawRecord(row.color_palette);
+
     selectionGroups.push({
       id,
       section,
@@ -593,10 +688,131 @@ export async function getModelVersionBundle(modelVersionId: string): Promise<Mod
       max_select: asNumber(row.max_select),
       is_required: asBoolean(row.is_required),
       help_text: asString(row.help_text),
+      color_area: asRelationId(row.color_area),
+      color_palette: asRelationId(row.color_palette),
+      color_area_detail: colorAreaRow ? toColorAreaRecord(colorAreaRow) : null,
+      color_palette_detail: colorPaletteRow ? toColorPaletteRecord(colorPaletteRow) : null,
       sort: asNumber(row.sort)
     });
   }
   selectionGroups.sort(bySortThenId);
+
+  const selectionGroupIds = selectionGroups.map((group) => group.id);
+  const groupOptionRows = selectionGroupIds.length
+    ? await readMany("group_options", {
+        filter: {
+          selection_group: { _in: selectionGroupIds }
+        },
+        fields: [
+          "id",
+          "selection_group",
+          "version_item",
+          "label_override",
+          "default_state",
+          "override_msrp",
+          "override_dealer_price",
+          "sort"
+        ],
+        sort: ["sort", "id"]
+      })
+    : [];
+
+  const groupOptions: GroupOptionRecord[] = [];
+  for (const row of groupOptionRows) {
+    const id = asString(row.id);
+    const selectionGroup = asRelationId(row.selection_group);
+    const versionItem = asRelationId(row.version_item);
+    if (!id || !selectionGroup || !versionItem) {
+      continue;
+    }
+
+    groupOptions.push({
+      id,
+      selection_group: selectionGroup,
+      version_item: versionItem,
+      label_override: asString(row.label_override),
+      default_state: asString(row.default_state),
+      override_msrp: asDecimal(row.override_msrp),
+      override_dealer_price: asDecimal(row.override_dealer_price),
+      sort: asNumber(row.sort)
+    });
+  }
+  groupOptions.sort(bySortThenId);
+
+  const colorAreaRows = await readMany("color_areas", {
+    fields: ["id", "key", "title", "sort"],
+    sort: ["sort", "id"]
+  });
+  const colorAreas = colorAreaRows
+    .map((row) => toColorAreaRecord(row))
+    .filter((row): row is ColorAreaRecord => Boolean(row));
+  colorAreas.sort(bySortThenId);
+
+  const colorPaletteRows = currentRevisionId
+    ? await readMany("color_palettes", {
+        filter: {
+          revision: { _eq: currentRevisionId }
+        },
+        fields: ["id", "revision", "key", "title", "sort"],
+        sort: ["sort", "id"]
+      })
+    : [];
+
+  const colorPalettes = colorPaletteRows
+    .map((row) => toColorPaletteRecord(row))
+    .filter((row): row is ColorPaletteRecord => Boolean(row));
+  colorPalettes.sort(bySortThenId);
+
+  const colorPaletteIds = colorPalettes.map((palette) => palette.id);
+  const colorPaletteItemRows = colorPaletteIds.length
+    ? await readMany("color_palette_items", {
+        filter: {
+          color_palette: { _in: colorPaletteIds }
+        },
+        fields: [
+          "id",
+          "color_palette",
+          "item",
+          "sort",
+          "item.id",
+          "item.key",
+          "item.label_default",
+          "item.description",
+          "item.internal_code",
+          "item.vendor_code",
+          "item.fulfillment",
+          "item.item_category",
+          "item.color_hex",
+          "item.is_color",
+          "item.sort"
+        ],
+        sort: ["sort", "id"]
+      })
+    : [];
+
+  const colorPaletteItems: ColorPaletteItemRecord[] = [];
+  for (const row of colorPaletteItemRows) {
+    const id = asString(row.id);
+    const colorPalette = asRelationId(row.color_palette);
+    const item = asRelationId(row.item);
+    if (!id || !colorPalette || !item) {
+      continue;
+    }
+
+    const itemDetail = toItemRecord(asRawRecord(row.item) ?? {});
+    if (itemDetail) {
+      itemsById.set(itemDetail.id, itemDetail);
+    }
+
+    colorPaletteItems.push({
+      id,
+      color_palette: colorPalette,
+      item,
+      sort: asNumber(row.sort),
+      item_detail: itemDetail
+    });
+  }
+  colorPaletteItems.sort(bySortThenId);
 
   const renderViewRows = currentRevisionId
     ? await readMany("render_views", {
@@ -635,7 +851,22 @@ export async function getModelVersionBundle(modelVersionId: string): Promise<Mod
         filter: {
           render_view: { _in: renderViewIds }
         },
-        fields: ["id", "render_view", "key", "layer_type", "asset", "mask_asset", "sort"],
+        fields: [
+          "id",
+          "render_view",
+          "key",
+          "layer_type",
+          "asset",
+          "mask_asset",
+          "color_area",
+          "color_area.id",
+          "color_area.key",
+          "color_area.title",
+          "color_area.sort",
+          "blend_mode",
+          "opacity",
+          "sort"
+        ],
         sort: ["sort", "id"]
       })
     : [];
@@ -643,22 +874,27 @@ export async function getModelVersionBundle(modelVersionId: string): Promise<Mod
   const renderLayers: RenderLayerRecord[] = [];
   for (const row of renderLayerRows) {
     const id = asString(row.id);
-    const renderView = asString(row.render_view);
+    const renderView = asRelationId(row.render_view);
     const key = asString(row.key);
-    const asset = asString(row.asset);
+    const asset = asRelationId(row.asset);
     if (!id || !renderView || !key || !asset) {
       continue;
     }
 
-    const maskAsset = asString(row.mask_asset);
+    const maskAsset = asRelationId(row.mask_asset);
+    const colorAreaRow = asRawRecord(row.color_area);
 
     renderLayers.push({
       id,
       render_view: renderView,
       key,
-      layer_type: asString(row.layer_type),
+      layer_type: asLayerType(row.layer_type),
       asset,
       mask_asset: maskAsset,
+      color_area: asRelationId(row.color_area),
+      color_area_detail: colorAreaRow ? toColorAreaRecord(colorAreaRow) : null,
+      blend_mode: asBlendMode(row.blend_mode),
+      opacity: asDecimal(row.opacity),
       sort: asNumber(row.sort)
     });
   }
@@ -679,6 +915,10 @@ export async function getModelVersionBundle(modelVersionId: string): Promise<Mod
     flow_steps: flowSteps,
     flow_sections: flowSections,
     selection_groups: selectionGroups,
+    group_options: groupOptions,
+    color_areas: colorAreas,
+    color_palettes: colorPalettes,
+    color_palette_items: colorPaletteItems,
     render_views: renderViews,
     render_layers: renderLayers
   };
