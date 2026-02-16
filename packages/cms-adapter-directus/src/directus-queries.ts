@@ -36,6 +36,21 @@ function asNumber(value: unknown): number | null {
   return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
 
+function asDecimal(value: unknown): number | null {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return value;
+  }
+
+  if (typeof value === "string" && value.length > 0) {
+    const parsed = Number(value);
+    if (Number.isFinite(parsed)) {
+      return parsed;
+    }
+  }
+
+  return null;
+}
+
 function asBoolean(value: unknown): boolean | null {
   return typeof value === "boolean" ? value : null;
 }
@@ -138,7 +153,16 @@ export async function getModelVersionBundle(modelVersionId: string): Promise<Mod
       status: { _eq: "published" }
     },
     limit: 1,
-    fields: ["id", "boat_model_id", "version_label", "status", "published_at"]
+    fields: [
+      "id",
+      "boat_model_id",
+      "model_year",
+      "version_label",
+      "status",
+      "published_at",
+      "compiled_hash",
+      "compiled_at"
+    ]
   });
 
   const versionRow = versionRows[0];
@@ -160,7 +184,7 @@ export async function getModelVersionBundle(modelVersionId: string): Promise<Mod
     filter: {
       model_version_id: { _eq: versionId }
     },
-    fields: ["id", "group_id", "key", "label", "input_type", "sort"],
+    fields: ["id", "group_id", "key", "label", "input_type", "is_required", "default_value", "sort"],
     sort: ["sort", "id"]
   });
 
@@ -173,7 +197,20 @@ export async function getModelVersionBundle(modelVersionId: string): Promise<Mod
         filter: {
           question_id: { _in: questionIds }
         },
-        fields: ["id", "question_id", "code", "label", "sort"],
+        fields: [
+          "id",
+          "question_id",
+          "code",
+          "label",
+          "description",
+          "price_msrp",
+          "price_dealer",
+          "price_mode",
+          "media_mode",
+          "is_default",
+          "is_available",
+          "sort"
+        ],
         sort: ["sort", "id"]
       })
     : [];
@@ -182,7 +219,7 @@ export async function getModelVersionBundle(modelVersionId: string): Promise<Mod
     filter: {
       model_version_id: { _eq: versionId }
     },
-    fields: ["id", "model_version_id", "key", "label", "sort"],
+    fields: ["id", "model_version_id", "key", "label", "base_image", "sort"],
     sort: ["sort", "id"]
   });
 
@@ -195,7 +232,7 @@ export async function getModelVersionBundle(modelVersionId: string): Promise<Mod
         filter: {
           render_view_id: { _in: renderViewIds }
         },
-        fields: ["id", "render_view_id", "key", "sort"],
+        fields: ["id", "render_view_id", "key", "z_index", "sort"],
         sort: ["sort", "id"]
       })
     : [];
@@ -240,7 +277,7 @@ export async function getModelVersionBundle(modelVersionId: string): Promise<Mod
     filter: {
       model_version_id: { _eq: versionId }
     },
-    fields: ["id", "render_view_id", "key", "name", "mask_file", "sort"],
+    fields: ["id", "render_view_id", "key", "name", "mask_file", "default_color_id", "sort"],
     sort: ["sort", "id"]
   });
 
@@ -279,7 +316,15 @@ export async function getModelVersionBundle(modelVersionId: string): Promise<Mod
       id,
       question_id: questionId,
       key: asString(row.code) ?? id,
+      code: asString(row.code),
       label: asString(row.label) ?? asString(row.code) ?? id,
+      description: asString(row.description),
+      price_msrp: asDecimal(row.price_msrp),
+      price_dealer: asDecimal(row.price_dealer),
+      price_mode: asString(row.price_mode),
+      media_mode: asString(row.media_mode),
+      is_default: asBoolean(row.is_default),
+      is_available: asBoolean(row.is_available),
       sort: asNumber(row.sort)
     });
     optionsByQuestionId.set(questionId, options);
@@ -303,6 +348,8 @@ export async function getModelVersionBundle(modelVersionId: string): Promise<Mod
       key: asString(row.key) ?? id,
       label: asString(row.label) ?? asString(row.key) ?? id,
       input_type: asString(row.input_type),
+      is_required: asBoolean(row.is_required),
+      default_value: asString(row.default_value),
       sort: asNumber(row.sort),
       options: optionsByQuestionId.get(id) ?? []
     });
@@ -343,6 +390,7 @@ export async function getModelVersionBundle(modelVersionId: string): Promise<Mod
     assets.push({
       id,
       layer_id: layerId,
+      option_id: asString(row.option_id),
       asset_role: asString(row.option_id),
       sort: asNumber(row.sort),
       file: asString(row.file)
@@ -366,6 +414,7 @@ export async function getModelVersionBundle(modelVersionId: string): Promise<Mod
       id,
       render_view_id: renderViewId,
       key: asString(row.key) ?? id,
+      z_index: asNumber(row.z_index),
       sort: asNumber(row.sort),
       layer_assets: layerAssetsByLayerId.get(id) ?? []
     });
@@ -390,6 +439,8 @@ export async function getModelVersionBundle(modelVersionId: string): Promise<Mod
     selections.push({
       id,
       color_area_id: areaId,
+      question_id: questionId,
+      allowed_palette_id: paletteId,
       sort: asNumber(row.sort),
       option: questionId ? { id: questionId, key: questionId, label: questionId } : null,
       color: paletteId ? { id: paletteId, name: paletteId, hex: "" } : null
@@ -413,9 +464,11 @@ export async function getModelVersionBundle(modelVersionId: string): Promise<Mod
 
     areas.push({
       id,
+      render_view_id: renderViewId,
       key,
       sort: asNumber(row.sort),
       mask_file: asString(row.mask_file),
+      default_color_id: asString(row.default_color_id),
       color_selections: colorSelectionsByAreaId.get(id) ?? []
     });
     colorAreasByRenderViewId.set(renderViewId, areas);
@@ -439,6 +492,7 @@ export async function getModelVersionBundle(modelVersionId: string): Promise<Mod
       model_version_id: asString(row.model_version_id) ?? versionId,
       key,
       label,
+      base_image: asString(row.base_image),
       sort: asNumber(row.sort),
       layers: layersByRenderViewId.get(id) ?? [],
       color_areas: colorAreasByRenderViewId.get(id) ?? []
@@ -506,9 +560,12 @@ export async function getModelVersionBundle(modelVersionId: string): Promise<Mod
   return {
     id: versionId,
     model_id: asString(versionRow.boat_model_id) ?? "",
+    model_year: asNumber(versionRow.model_year),
     version_label: asString(versionRow.version_label) ?? versionId,
     status: "published",
     published_at: asString(versionRow.published_at),
+    compiled_hash: asString(versionRow.compiled_hash),
+    compiled_at: asString(versionRow.compiled_at),
     option_groups: optionGroups,
     render_views: renderViews as unknown as RenderViewRecord[],
     color_palettes: colorPalettes,
