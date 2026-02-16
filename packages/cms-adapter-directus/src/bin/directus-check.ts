@@ -171,7 +171,7 @@ async function main(): Promise<void> {
   try {
     await validateRequiredSchema();
 
-    const { getModelVersionBundle, getPublishedModels } = await import("../directus-queries.js");
+    const { getModelVersionBundle, getPublishedModels } = await import("../directus-cms-adapter.js");
     const models = await getPublishedModels();
 
     const publishedVersions = models.flatMap((model) => model.model_versions ?? []);

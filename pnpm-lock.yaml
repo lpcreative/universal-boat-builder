@@ -43,8 +43,24 @@ importers:
         specifier: ^5.0.0
         version: 5.9.3
 
+  packages/compiler:
+    dependencies:
+      '@ubb/cms-adapter-directus':
+        specifier: workspace:*
+        version: link:../cms-adapter-directus
+    devDependencies:
+      typescript:
+        specifier: ^5.0.0
+        version: 5.9.3
+
   packages/engine:
     dependencies:
+      '@ubb/cms-adapter-directus':
+        specifier: workspace:*
+        version: link:../cms-adapter-directus
+      '@ubb/compiler':
+        specifier: workspace:*
+        version: link:../compiler
       ajv:
         specifier: ^8.17.1
         version: 8.17.1
