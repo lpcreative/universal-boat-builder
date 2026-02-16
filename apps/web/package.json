@@ -9,6 +9,7 @@
     "test": "echo \"web not scaffolded yet\""
   },
   "dependencies": {
+    "@ubb/cms-adapter-directus": "workspace:*",
     "@ubb/engine": "workspace:*"
   }
 }
