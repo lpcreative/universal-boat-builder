@@ -1,5 +1,11 @@
 type DirectusErrorPayload = {
-  errors?: unknown[];
+  errors?: Array<{
+    message?: unknown;
+    extensions?: {
+      code?: unknown;
+      reason?: unknown;
+    };
+  }>;
 };
 
 function setExitCode(code: number): void {
@@ -24,7 +30,15 @@ function formatError(error: unknown): string {
     "errors" in error &&
     Array.isArray((error as DirectusErrorPayload).errors)
   ) {
-    return safeJson(error);
+    const lines = (error as DirectusErrorPayload).errors?.map((entry, index) => {
+      const message = typeof entry?.message === "string" ? entry.message : "Unknown Directus error";
+      const code = typeof entry?.extensions?.code === "string" ? entry.extensions.code : null;
+      const reason = typeof entry?.extensions?.reason === "string" ? entry.extensions.reason : null;
+      const suffix = [code, reason].filter((part): part is string => Boolean(part)).join(" | ");
+      return suffix.length > 0 ? `  ${index + 1}. ${message} (${suffix})` : `  ${index + 1}. ${message}`;
+    });
+
+    return ["Directus API returned errors:", ...(lines ?? [])].join("\n");
   }
 
   if (error instanceof Error) {
@@ -132,7 +146,7 @@ async function main(): Promise<void> {
     const firstPublished = publishedVersions[0];
 
     console.log(`- manufacturers (derived from models): ${manufacturerIds.size}`);
-    console.log(`- models with published versions: ${models.length}`);
+    console.log(`- models count: ${models.length}`);
     console.log(`- published model_versions: ${publishedVersions.length}`);
 
     if (!firstPublished) {
@@ -161,14 +175,12 @@ async function main(): Promise<void> {
     );
     const totalPaletteColors = countPaletteColors(palettes);
 
-    console.log(`- option_groups/questions/options: ${optionGroups.length}/${qCounts.questions}/${qCounts.options}`);
     console.log(
-      `- render_views/layers/layer_assets: ${renderViews.length}/${renderCounts.layers}/${renderCounts.layerAssets}`
+      `- bundle counts (groups/questions/options/views/layers/assets/palettes/colors/areas/selections/rules): ` +
+        `${optionGroups.length}/${qCounts.questions}/${qCounts.options}/${renderViews.length}/${renderCounts.layers}/` +
+        `${renderCounts.layerAssets}/${palettes.length}/${totalPaletteColors}/${renderCounts.colorAreas}/` +
+        `${renderCounts.colorSelections}/${(bundle.rules ?? []).length}`
     );
-    console.log(
-      `- palettes/colors/areas/selections: ${palettes.length}/${totalPaletteColors}/${renderCounts.colorAreas}/${renderCounts.colorSelections}`
-    );
-    console.log(`- rules: ${(bundle.rules ?? []).length}`);
   } catch (error) {
     console.error("Directus connectivity check failed");
     console.error(formatError(error));

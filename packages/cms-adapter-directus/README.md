@@ -25,6 +25,8 @@ DIRECTUS_API_URL=http://localhost:8055 DIRECTUS_STATIC_TOKEN=... pnpm --filter @
 
 The script verifies published model visibility and tries to load a complete published `model_version` bundle.
 
+Publishing visibility is controlled by `model_versions.status = "published"` (Directus built-in `status` field).
+
 ## Collections The Reader Role Must Be Able To Read
 
 Minimum read permissions for an app reader/service account token:

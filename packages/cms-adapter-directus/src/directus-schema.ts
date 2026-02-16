@@ -1,5 +1,3 @@
-export type ModelVersionStatus = "draft" | "published" | "archived";
-
 export interface ManufacturerRecord {
   id: string;
   slug: string;
@@ -137,7 +135,7 @@ export interface ModelVersionRecord {
   model_slug?: string | null;
   model_year?: number | null;
   version_label: string;
-  status: ModelVersionStatus;
+  status: "draft" | "published" | "archived";
   published_at: string | null;
   compiled_hash?: string | null;
   compiled_at?: string | null;

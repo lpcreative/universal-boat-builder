@@ -64,15 +64,15 @@ export async function getPublishedModels(): Promise<PublishedModel[]> {
     filter: {
       status: { _eq: "published" }
     },
-    fields: ["id", "boat_model_id", "version_label", "status", "published_at"],
-    sort: ["boat_model_id", "-published_at", "-id"]
+    fields: ["id", "model_id", "version_label", "status", "published_at"],
+    sort: ["model_id", "-published_at", "-id"]
   });
 
   const versionsByModelId = new Map<string, ModelVersionRecord[]>();
 
   for (const row of versionRows) {
     const id = asString(row.id);
-    const modelId = asString(row.boat_model_id);
+    const modelId = asString(row.model_id);
     const versionLabel = asString(row.version_label);
 
     if (!id || !modelId || !versionLabel) {
@@ -143,6 +143,14 @@ export async function getPublishedModels(): Promise<PublishedModel[]> {
     });
   }
 
+  models.sort((a, b) => {
+    const byName = a.name.localeCompare(b.name);
+    if (byName !== 0) {
+      return byName;
+    }
+    return a.id.localeCompare(b.id);
+  });
+
   return models;
 }
 
@@ -155,7 +163,7 @@ export async function getModelVersionBundle(modelVersionId: string): Promise<Mod
     limit: 1,
     fields: [
       "id",
-      "boat_model_id",
+      "model_id",
       "model_year",
       "version_label",
       "status",
@@ -176,17 +184,23 @@ export async function getModelVersionBundle(modelVersionId: string): Promise<Mod
     filter: {
       model_version_id: { _eq: versionId }
     },
-    fields: ["id", "model_version_id", "title", "description", "sort"],
+    fields: ["id", "model_version_id", "key", "label", "title", "description", "sort"],
     sort: ["sort", "id"]
   });
 
-  const questionRows = await readMany("questions", {
-    filter: {
-      model_version_id: { _eq: versionId }
-    },
-    fields: ["id", "group_id", "key", "label", "input_type", "is_required", "default_value", "sort"],
-    sort: ["sort", "id"]
-  });
+  const optionGroupIds = optionGroupRows
+    .map((row) => asString(row.id))
+    .filter((id): id is string => Boolean(id));
+
+  const questionRows = optionGroupIds.length
+    ? await readMany("questions", {
+        filter: {
+          option_group_id: { _in: optionGroupIds }
+        },
+        fields: ["id", "option_group_id", "key", "label", "input_type", "is_required", "default_value", "sort"],
+        sort: ["sort", "id"]
+      })
+    : [];
 
   const questionIds = questionRows
     .map((row) => asString(row.id))
@@ -200,6 +214,7 @@ export async function getModelVersionBundle(modelVersionId: string): Promise<Mod
         fields: [
           "id",
           "question_id",
+          "key",
           "code",
           "label",
           "description",
@@ -232,7 +247,7 @@ export async function getModelVersionBundle(modelVersionId: string): Promise<Mod
         filter: {
           render_view_id: { _in: renderViewIds }
         },
-        fields: ["id", "render_view_id", "key", "z_index", "sort"],
+        fields: ["id", "render_view_id", "key", "z_index", "sort", "blend_mode", "opacity"],
         sort: ["sort", "id"]
       })
     : [];
@@ -266,20 +281,22 @@ export async function getModelVersionBundle(modelVersionId: string): Promise<Mod
   const colorRows = paletteIds.length
     ? await readMany("colors", {
         filter: {
-          palette_id: { _in: paletteIds }
+          color_palette_id: { _in: paletteIds }
         },
-        fields: ["id", "palette_id", "name", "hex", "sort"],
+        fields: ["id", "color_palette_id", "name", "hex", "sort"],
         sort: ["sort", "id"]
       })
     : [];
 
-  const colorAreaRows = await readMany("color_areas", {
-    filter: {
-      model_version_id: { _eq: versionId }
-    },
-    fields: ["id", "render_view_id", "key", "name", "mask_file", "default_color_id", "sort"],
-    sort: ["sort", "id"]
-  });
+  const colorAreaRows = renderViewIds.length || layerIds.length
+    ? await readMany("color_areas", {
+        filter: {
+          _or: [{ render_view_id: { _in: renderViewIds } }, { layer_id: { _in: layerIds } }]
+        },
+        fields: ["id", "layer_id", "render_view_id", "key", "name", "mask_file", "default_color_id", "sort"],
+        sort: ["sort", "id"]
+      })
+    : [];
 
   const colorAreaIds = colorAreaRows
     .map((row) => asString(row.id))
@@ -299,7 +316,7 @@ export async function getModelVersionBundle(modelVersionId: string): Promise<Mod
     filter: {
       model_version_id: { _eq: versionId }
     },
-    fields: ["id", "model_version_id", "rule_type", "is_enabled", "sort", "rule_json"],
+    fields: ["id", "model_version_id", "scope", "priority", "enabled", "rule_json"],
     sort: ["sort", "id"]
   });
 
@@ -336,7 +353,7 @@ export async function getModelVersionBundle(modelVersionId: string): Promise<Mod
   const questionsByGroupId = new Map<string, QuestionRecord[]>();
   for (const row of questionRows) {
     const id = asString(row.id);
-    const groupId = asString(row.group_id);
+    const groupId = asString(row.option_group_id);
     if (!id || !groupId) {
       continue;
     }
@@ -366,17 +383,19 @@ export async function getModelVersionBundle(modelVersionId: string): Promise<Mod
       continue;
     }
 
-    const title = asString(row.title) ?? id;
+    const key = asString(row.key) ?? asString(row.title) ?? id;
+    const label = asString(row.label) ?? asString(row.title) ?? key;
 
     optionGroups.push({
       id,
       model_version_id: asString(row.model_version_id) ?? versionId,
-      key: title,
-      label: title,
+      key,
+      label,
       sort: asNumber(row.sort),
       questions: questionsByGroupId.get(id) ?? []
     });
   }
+  optionGroups.sort(bySortThenId);
 
   const layerAssetsByLayerId = new Map<string, LayerAssetRecord[]>();
   for (const row of layerAssetRows) {
@@ -416,6 +435,8 @@ export async function getModelVersionBundle(modelVersionId: string): Promise<Mod
       key: asString(row.key) ?? id,
       z_index: asNumber(row.z_index),
       sort: asNumber(row.sort),
+      blend_mode: asString(row.blend_mode),
+      opacity: asNumber(row.opacity),
       layer_assets: layerAssetsByLayerId.get(id) ?? []
     });
     layersByRenderViewId.set(renderViewId, layers);
@@ -451,30 +472,51 @@ export async function getModelVersionBundle(modelVersionId: string): Promise<Mod
     selections.sort(bySortThenId);
   }
 
+  const colorAreasByLayerId = new Map<string, ColorAreaRecord[]>();
   const colorAreasByRenderViewId = new Map<string, ColorAreaRecord[]>();
   for (const row of colorAreaRows) {
     const id = asString(row.id);
-    const renderViewId = asString(row.render_view_id);
-    if (!id || !renderViewId) {
+    if (!id) {
       continue;
     }
 
-    const areas = colorAreasByRenderViewId.get(renderViewId) ?? [];
     const key = asString(row.key) ?? asString(row.name) ?? id;
-
-    areas.push({
+    const area: ColorAreaRecord = {
       id,
-      render_view_id: renderViewId,
+      layer_id: asString(row.layer_id),
+      render_view_id: asString(row.render_view_id),
       key,
       sort: asNumber(row.sort),
       mask_file: asString(row.mask_file),
       default_color_id: asString(row.default_color_id),
       color_selections: colorSelectionsByAreaId.get(id) ?? []
-    });
-    colorAreasByRenderViewId.set(renderViewId, areas);
+    };
+
+    const layerId = asString(row.layer_id);
+    if (layerId) {
+      const areas = colorAreasByLayerId.get(layerId) ?? [];
+      areas.push(area);
+      colorAreasByLayerId.set(layerId, areas);
+    }
+
+    const renderViewId = asString(row.render_view_id);
+    if (renderViewId) {
+      const areas = colorAreasByRenderViewId.get(renderViewId) ?? [];
+      areas.push(area);
+      colorAreasByRenderViewId.set(renderViewId, areas);
+    }
+  }
+  for (const areas of colorAreasByLayerId.values()) {
+    areas.sort(bySortThenId);
   }
   for (const areas of colorAreasByRenderViewId.values()) {
     areas.sort(bySortThenId);
+  }
+
+  for (const layers of layersByRenderViewId.values()) {
+    for (const layer of layers) {
+      layer.color_areas = colorAreasByLayerId.get(layer.id) ?? [];
+    }
   }
 
   const renderViews: Array<RenderViewRecord & { color_areas?: ColorAreaRecord[] }> = [];
@@ -498,11 +540,12 @@ export async function getModelVersionBundle(modelVersionId: string): Promise<Mod
       color_areas: colorAreasByRenderViewId.get(id) ?? []
     });
   }
+  renderViews.sort(bySortThenId);
 
   const colorsByPaletteId = new Map<string, ColorRecord[]>();
   for (const row of colorRows) {
     const id = asString(row.id);
-    const paletteId = asString(row.palette_id);
+    const paletteId = asString(row.color_palette_id);
     if (!id || !paletteId) {
       continue;
     }
@@ -539,6 +582,7 @@ export async function getModelVersionBundle(modelVersionId: string): Promise<Mod
       colors: colorsByPaletteId.get(id) ?? []
     });
   }
+  colorPalettes.sort(bySortThenId);
 
   const rules: RuleRecord[] = [];
   for (const row of ruleRows) {
@@ -550,16 +594,24 @@ export async function getModelVersionBundle(modelVersionId: string): Promise<Mod
     rules.push({
       id,
       model_version_id: asString(row.model_version_id) ?? versionId,
-      scope: asString(row.rule_type),
-      priority: asNumber(row.sort),
-      enabled: asBoolean(row.is_enabled),
+      scope: asString(row.scope),
+      priority: asNumber(row.priority),
+      enabled: asBoolean(row.enabled),
       rule_json: (row.rule_json as Record<string, unknown> | null | undefined) ?? null
     });
   }
+  rules.sort((a, b) => {
+    const aPriority = a.priority ?? Number.MAX_SAFE_INTEGER;
+    const bPriority = b.priority ?? Number.MAX_SAFE_INTEGER;
+    if (aPriority !== bPriority) {
+      return aPriority - bPriority;
+    }
+    return a.id.localeCompare(b.id);
+  });
 
   return {
     id: versionId,
-    model_id: asString(versionRow.boat_model_id) ?? "",
+    model_id: asString(versionRow.model_id) ?? "",
     model_year: asNumber(versionRow.model_year),
     version_label: asString(versionRow.version_label) ?? versionId,
     status: "published",
