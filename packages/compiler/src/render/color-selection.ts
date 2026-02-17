@@ -166,8 +166,12 @@ export function buildColorByAreaKey(
   logger: Logger = (message) => console.warn(message)
 ): Record<string, string> {
   const colorByAreaKey: Record<string, string> = {};
-  const versionItemById = new Map(bundle.version_items.map((item) => [item.id, item]));
-  const groupOptionById = new Map(bundle.group_options.map((option) => [option.id, option]));
+  const versionItemById = new Map(
+    bundle.version_items.map((item: VersionItemRecord): [string, VersionItemRecord] => [item.id, item])
+  );
+  const groupOptionById = new Map(
+    bundle.group_options.map((option: GroupOptionRecord): [string, GroupOptionRecord] => [option.id, option])
+  );
   const groupOptionsByGroupId = new Map<string, GroupOptionRecord[]>();
   const sortedGroupOptions = [...bundle.group_options].sort(bySortThenId);
   const colorHexByItemId = itemColorHexByItemId(bundle.version_items, bundle.color_palette_items);

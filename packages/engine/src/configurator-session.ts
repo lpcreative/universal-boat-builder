@@ -102,6 +102,9 @@ function pickSingleDefaultOption(
 ): string | null {
   for (const option of groupOptions) {
     const versionItem = versionItemsById.get(option.version_item);
+    if (!versionItem) {
+      continue;
+    }
     if (isAvailable(versionItem) && isDefault(versionItem)) {
       return versionItem.id;
     }
@@ -115,6 +118,9 @@ function pickFirstAvailableOption(
 ): string | null {
   for (const option of groupOptions) {
     const versionItem = versionItemsById.get(option.version_item);
+    if (!versionItem) {
+      continue;
+    }
     if (isAvailable(versionItem)) {
       return versionItem.id;
     }
@@ -215,6 +221,9 @@ export function createDeterministicSelectionState(bundle: ModelVersionBundle): {
       const selected: string[] = [];
       for (const option of groupOptions) {
         const versionItem = versionItemsById.get(option.version_item);
+        if (!versionItem) {
+          continue;
+        }
         if (isAvailable(versionItem) && isDefault(versionItem)) {
           selected.push(versionItem.id);
         }
@@ -290,7 +299,7 @@ export async function createConfiguratorSession(
   const { selections, warnings } = createDeterministicSelectionState(bundle);
   warnings.push(...collectTintLayerWarnings(bundle));
 
-  const colorByAreaKey = buildColorByAreaKey(bundle, selections, (message) => warnings.push(message));
+  const colorByAreaKey = buildColorByAreaKey(bundle, selections, (message: unknown) => warnings.push(String(message)));
   const renders: Array<{ viewKey: string; dataUrl: string }> = [];
   const firstView = firstRenderView(bundle);
 
