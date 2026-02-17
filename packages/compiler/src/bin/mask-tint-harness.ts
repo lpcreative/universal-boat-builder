@@ -1,4 +1,9 @@
 import { getModelVersionBundle, getPublishedModels } from "@ubb/cms-adapter-directus";
+import type {
+  PublishedModel,
+  PublishedModelVersionRecord,
+  RenderViewRecord
+} from "@ubb/cms-adapter-directus";
 import { buildColorByAreaKey } from "../render/color-selection.js";
 import { render_view_to_data_url } from "../render/mask_tint_renderer.js";
 
@@ -21,7 +26,9 @@ async function main(): Promise<void> {
   }
 
   const models = await getPublishedModels();
-  const firstPublished = models.flatMap((model) => model.model_versions)[0];
+  const firstPublished = models.flatMap(
+    (model: PublishedModel): PublishedModelVersionRecord[] => model.model_versions
+  )[0];
   if (!firstPublished) {
     throw new Error("No published model_versions found.");
   }
@@ -31,7 +38,10 @@ async function main(): Promise<void> {
     throw new Error(`Unable to load bundle for model_version ${firstPublished.id}.`);
   }
 
-  const firstView = [...bundle.render_views].sort((a, b) => (a.sort ?? 1e9) - (b.sort ?? 1e9) || a.id.localeCompare(b.id))[0];
+  const firstView = [...bundle.render_views].sort(
+    (a: RenderViewRecord, b: RenderViewRecord) =>
+      (a.sort ?? 1e9) - (b.sort ?? 1e9) || a.id.localeCompare(b.id)
+  )[0];
   if (!firstView) {
     throw new Error("Bundle has no render_views.");
   }

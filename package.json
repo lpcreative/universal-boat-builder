@@ -14,6 +14,7 @@
     "directus:logs": "docker compose -f docker/compose.directus.yml --env-file docker/.env.directus logs -f"
   },
   "devDependencies": {
+    "@types/node": "^22.13.10",
     "turbo": "^1.12.0",
     "typescript": "^5.0.0"
   }
