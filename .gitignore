@@ -8,3 +8,6 @@ docker/.env.directus
 .DS_Store
 .turbo
 **/.turbo
+apps/web/.env.local
+apps/web/.env*
+!apps/web/.env.example

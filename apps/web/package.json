@@ -3,13 +3,26 @@
   "version": "0.0.1",
   "private": true,
   "scripts": {
-    "dev": "echo \"web not scaffolded yet\"",
-    "build": "echo \"web not scaffolded yet\"",
-    "typecheck": "echo \"web not scaffolded yet\"",
-    "test": "echo \"web not scaffolded yet\""
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "typecheck": "tsc --noEmit",
+    "test": "echo \"no tests for web yet\""
   },
   "dependencies": {
     "@ubb/cms-adapter-directus": "workspace:*",
-    "@ubb/engine": "workspace:*"
+    "@ubb/compiler": "workspace:*",
+    "@ubb/engine": "workspace:*",
+    "next": "^14.2.26",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@types/react": "^18.3.18",
+    "@types/react-dom": "^18.3.5",
+    "autoprefixer": "^10.4.20",
+    "postcss": "^8.5.3",
+    "tailwindcss": "^3.4.17",
+    "typescript": "^5.0.0"
   }
 }
