@@ -1,8 +1,6 @@
 import "server-only";
 
 import type { GroupOptionRecord, ModelVersionBundle, PublishedModel, VersionItemRecord } from "@ubb/cms-adapter-directus";
-import { getPublishedModels } from "@ubb/cms-adapter-directus";
-import { createConfiguratorSession } from "@ubb/engine";
 import { bySortThenId, type ConfigOptionView, type ConfigSelectionGroupView, type SelectionState } from "../configurator-shared";
 
 export interface PublishedModelVersionChoice {
@@ -29,6 +27,7 @@ function versionText(version: { year?: number | null; trim?: string | null }): s
 }
 
 export async function listPublishedModelVersionChoices(): Promise<PublishedModelVersionChoice[]> {
+  const { getPublishedModels } = await import("@ubb/cms-adapter-directus");
   const models = await getPublishedModels();
   const rows: RawModelVersion[] = [];
 
@@ -163,6 +162,7 @@ export async function createInitialConfiguratorData(args: {
   colorByAreaKey: Record<string, string>;
   initialDataUrl: string | null;
 }> {
+  const { createConfiguratorSession } = await import("@ubb/engine");
   const session = await createConfiguratorSession({ modelVersionId: args.modelVersionId });
 
   return {

@@ -1,8 +1,7 @@
-import { getModelVersionBundle, type ModelVersionBundle, type RenderViewRecord } from "@ubb/cms-adapter-directus";
-import { buildColorByAreaKey, render_view_to_data_url } from "@ubb/compiler";
-import { createDirectusAssetUrlResolver } from "@ubb/engine";
+import type { ModelVersionBundle, RenderViewRecord } from "@ubb/cms-adapter-directus";
 import { NextResponse } from "next/server";
 import { bySortThenId, sanitizeSelectionState } from "../../../../lib/configurator-shared";
+import { checkRequiredDirectusEnv } from "../../../../lib/server/directus-env";
 
 interface RenderRequestBody {
   modelVersionId?: unknown;
@@ -15,7 +14,14 @@ function firstRenderView(bundle: ModelVersionBundle): RenderViewRecord | null {
 }
 
 export async function POST(request: Request): Promise<Response> {
+  const env = checkRequiredDirectusEnv();
+  if (!env.ok) {
+    return NextResponse.json({ error: "missing_env", missing: env.missing }, { status: 400 });
+  }
+
   try {
+    const [{ getModelVersionBundle }, { buildColorByAreaKey, render_view_to_data_url }, { createDirectusAssetUrlResolver }] =
+      await Promise.all([import("@ubb/cms-adapter-directus"), import("@ubb/compiler"), import("@ubb/engine")]);
     const body = (await request.json()) as RenderRequestBody;
     const modelVersionId = typeof body.modelVersionId === "string" ? body.modelVersionId : "";
 
@@ -39,7 +45,7 @@ export async function POST(request: Request): Promise<Response> {
           layers: bundle.render_layers,
           selections,
           colorByAreaKey,
-          fileUrlForId: createDirectusAssetUrlResolver()
+          fileUrlForId: createDirectusAssetUrlResolver(env.apiUrl)
         })
       : null;
 

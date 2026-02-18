@@ -99,23 +99,24 @@ export function ConfiguratorClient(props: ConfiguratorClientProps): JSX.Element 
   }
 
   return (
-    <section style={{ display: "grid", gap: 16 }}>
-      <div>
+    <section className="grid gap-4">
+      <div className="rounded-lg border border-slate-200 bg-white p-3">
         {dataUrl ? (
-          <img src={dataUrl} alt="Composite preview" style={{ width: "100%", maxWidth: 720, border: "1px solid #ccc" }} />
+          <img src={dataUrl} alt="Composite preview" className="w-full max-w-[720px] rounded border border-slate-200" />
         ) : (
-          <p>No render view is configured for this model version.</p>
+          <p className="text-sm text-slate-700">No render view is configured for this model version.</p>
         )}
       </div>
 
-      <div style={{ border: "1px solid #ddd", padding: 12 }}>
-        <h2 style={{ marginTop: 0 }}>Debug</h2>
-        <p>
+      <div className="rounded-lg border border-slate-200 bg-white p-4">
+        <h2 className="text-lg font-semibold text-slate-900">Debug</h2>
+        <p className="mt-2 text-sm text-slate-700">
           <strong>modelVersionId:</strong> {props.modelVersionId}
         </p>
         {props.showCopyModelVersionIdButton ? (
           <button
             type="button"
+            className="mt-2 rounded-md border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50"
             onClick={() => {
               void navigator.clipboard.writeText(props.modelVersionId);
             }}
@@ -123,22 +124,25 @@ export function ConfiguratorClient(props: ConfiguratorClientProps): JSX.Element 
             Copy MODEL_VERSION_ID
           </button>
         ) : null}
-        <p>
+        <p className="mt-2 text-sm text-slate-700">
           <strong>selectionGroups:</strong> {sortedGroups.length}
         </p>
-        <pre style={{ whiteSpace: "pre-wrap", overflowX: "auto" }}>{JSON.stringify(colorByAreaKey, null, 2)}</pre>
+        <pre className="mt-2 overflow-x-auto rounded-md bg-slate-950 p-3 text-xs text-slate-100">
+          {JSON.stringify(colorByAreaKey, null, 2)}
+        </pre>
       </div>
 
-      <div style={{ border: "1px solid #ddd", padding: 12 }}>
-        <h2 style={{ marginTop: 0 }}>Selections</h2>
+      <div className="rounded-lg border border-slate-200 bg-white p-4">
+        <h2 className="text-lg font-semibold text-slate-900">Selections</h2>
         {sortedGroups.map((group) => {
           const currentValue = selections[group.key];
 
           if (group.selectionMode === "single") {
             return (
-              <label key={group.id} style={{ display: "grid", gap: 4, marginBottom: 12 }}>
-                <span>{group.title}</span>
+              <label key={group.id} className="mb-3 mt-3 grid gap-1.5">
+                <span className="text-sm font-medium text-slate-800">{group.title}</span>
                 <select
+                  className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm outline-none ring-sky-500 focus:ring-2"
                   value={asString(currentValue)}
                   onChange={(event) => {
                     updateSelections({
@@ -147,7 +151,7 @@ export function ConfiguratorClient(props: ConfiguratorClientProps): JSX.Element 
                     });
                   }}
                 >
-                  <option value="">-- Select --</option>
+                  <option value="">Select</option>
                   {group.options.map((option) => (
                     <option key={option.id} value={option.versionItemId}>
                       {option.label}
@@ -160,9 +164,10 @@ export function ConfiguratorClient(props: ConfiguratorClientProps): JSX.Element 
 
           if (group.selectionMode === "boolean") {
             return (
-              <label key={group.id} style={{ display: "flex", gap: 8, marginBottom: 12 }}>
+              <label key={group.id} className="mb-3 mt-3 flex items-center gap-2 text-sm text-slate-800">
                 <input
                   type="checkbox"
+                  className="h-4 w-4 rounded border-slate-300"
                   checked={asBoolean(currentValue)}
                   onChange={(event) => {
                     updateSelections({
@@ -179,12 +184,13 @@ export function ConfiguratorClient(props: ConfiguratorClientProps): JSX.Element 
           if (group.selectionMode === "multi") {
             const selected = new Set(asStringArray(currentValue));
             return (
-              <fieldset key={group.id} style={{ marginBottom: 12 }}>
-                <legend>{group.title}</legend>
+              <fieldset key={group.id} className="mb-3 mt-3 rounded-md border border-slate-200 p-3">
+                <legend className="px-1 text-sm font-medium text-slate-800">{group.title}</legend>
                 {group.options.map((option) => (
-                  <label key={option.id} style={{ display: "block" }}>
+                  <label key={option.id} className="mt-1 block text-sm text-slate-700">
                     <input
                       type="checkbox"
+                      className="mr-1 h-4 w-4 rounded border-slate-300"
                       checked={selected.has(option.versionItemId)}
                       onChange={(event) => {
                         const nextSet = new Set(selected);
@@ -208,10 +214,11 @@ export function ConfiguratorClient(props: ConfiguratorClientProps): JSX.Element 
           }
 
           return (
-            <label key={group.id} style={{ display: "grid", gap: 4, marginBottom: 12 }}>
-              <span>{group.title}</span>
+            <label key={group.id} className="mb-3 mt-3 grid gap-1.5">
+              <span className="text-sm font-medium text-slate-800">{group.title}</span>
               <input
                 type="number"
+                className="w-28 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm outline-none ring-sky-500 focus:ring-2"
                 value={asNumber(currentValue)}
                 onChange={(event) => {
                   updateSelections({
@@ -224,8 +231,8 @@ export function ConfiguratorClient(props: ConfiguratorClientProps): JSX.Element 
           );
         })}
 
-        {isRendering ? <p>Rendering...</p> : null}
-        {error ? <p style={{ color: "#b00020" }}>Render error: {error}</p> : null}
+        {isRendering ? <p className="text-sm text-slate-600">Rendering...</p> : null}
+        {error ? <p className="rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-900">Render error: {error}</p> : null}
       </div>
     </section>
   );
