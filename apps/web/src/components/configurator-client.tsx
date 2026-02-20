@@ -9,6 +9,7 @@ import type {
   ConfigSelectionGroupView,
   SelectionState
 } from "../lib/configurator-shared";
+import { sanitizeSelectionState } from "../lib/configurator-shared";
 
 interface ConfiguratorClientProps {
   modelVersionId: string;
@@ -25,6 +26,7 @@ type PricingMode = "msrp" | "dealer";
 type ViewMode = "paged" | "all";
 
 const DEFAULT_VIEW_MODE: ViewMode = "paged";
+const ENCODED_SELECTIONS_VERSION = "v1";
 
 interface StepSection {
   id: string;
@@ -43,6 +45,23 @@ interface FlowStepGroup {
 interface PricePillInfo {
   text: string;
   tone: "included" | "positive" | "negative";
+}
+
+interface PersistedConfiguratorState {
+  modelVersionId: string;
+  selections: SelectionState;
+  activeStepId: string | null;
+  priceBook: PricingMode;
+  summaryExpanded: boolean;
+  viewMode: ViewMode;
+}
+
+interface UrlState {
+  mv: string | null;
+  stepId: string | null;
+  priceBook: PricingMode | null;
+  viewMode: ViewMode | null;
+  selections: SelectionState | null;
 }
 
 function asStringArray(value: SelectionState[string]): string[] {
@@ -134,13 +153,138 @@ function buildStepTree(selectionGroups: ConfigSelectionGroupView[]): FlowStepGro
   return Array.from(steps.values());
 }
 
+function canonicalizeSelectionState(input: SelectionState): SelectionState {
+  const sortedEntries = Object.entries(sanitizeSelectionState(input)).sort(([a], [b]) => a.localeCompare(b));
+  const output: SelectionState = {};
+  for (const [key, value] of sortedEntries) {
+    if (Array.isArray(value)) {
+      output[key] = [...value].sort((a, b) => a.localeCompare(b));
+    } else {
+      output[key] = value;
+    }
+  }
+  return output;
+}
+
+function base64UrlEncode(value: string): string {
+  return btoa(value).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
+}
+
+function base64UrlDecode(value: string): string {
+  const normalized = value.replace(/-/g, "+").replace(/_/g, "/");
+  const pad = normalized.length % 4 === 0 ? "" : "=".repeat(4 - (normalized.length % 4));
+  return atob(`${normalized}${pad}`);
+}
+
+function encodeSelectionsForUrl(selections: SelectionState): string {
+  const canonical = canonicalizeSelectionState(selections);
+  const json = JSON.stringify(canonical);
+  const uriEncoded = encodeURIComponent(json);
+  return `${ENCODED_SELECTIONS_VERSION}:${base64UrlEncode(uriEncoded)}`;
+}
+
+function decodeSelectionsFromUrl(encoded: string | null): SelectionState | null {
+  if (!encoded) {
+    return null;
+  }
+  const [version, payload] = encoded.split(":", 2);
+  if (version !== ENCODED_SELECTIONS_VERSION || !payload) {
+    return null;
+  }
+
+  try {
+    const uriEncoded = base64UrlDecode(payload);
+    const json = decodeURIComponent(uriEncoded);
+    const parsed = JSON.parse(json);
+    return sanitizeSelectionState(parsed);
+  } catch {
+    return null;
+  }
+}
+
+function parsePriceBook(value: string | null): PricingMode | null {
+  return value === "msrp" || value === "dealer" ? value : null;
+}
+
+function parseViewMode(value: string | null): ViewMode | null {
+  return value === "paged" || value === "all" ? value : null;
+}
+
+function parseUrlState(search: string): UrlState {
+  const params = new URLSearchParams(search);
+  return {
+    mv: params.get("mv"),
+    stepId: params.get("step"),
+    priceBook: parsePriceBook(params.get("book")),
+    viewMode: parseViewMode(params.get("mode")),
+    selections: decodeSelectionsFromUrl(params.get("s"))
+  };
+}
+
+function buildPersistedState(input: {
+  modelVersionId: string;
+  selections: SelectionState;
+  activeStepId: string | null;
+  priceBook: PricingMode;
+  summaryExpanded: boolean;
+  viewMode: ViewMode;
+}): PersistedConfiguratorState {
+  return {
+    modelVersionId: input.modelVersionId,
+    selections: canonicalizeSelectionState(input.selections),
+    activeStepId: input.activeStepId,
+    priceBook: input.priceBook,
+    summaryExpanded: input.summaryExpanded,
+    viewMode: input.viewMode
+  };
+}
+
+function readPersistedState(raw: string | null): PersistedConfiguratorState | null {
+  if (!raw) {
+    return null;
+  }
+
+  try {
+    const parsed = JSON.parse(raw) as Partial<PersistedConfiguratorState>;
+    if (typeof parsed !== "object" || !parsed) {
+      return null;
+    }
+    if (typeof parsed.modelVersionId !== "string") {
+      return null;
+    }
+    if (typeof parsed.activeStepId !== "string" && parsed.activeStepId !== null) {
+      return null;
+    }
+    if (parsed.priceBook !== "msrp" && parsed.priceBook !== "dealer") {
+      return null;
+    }
+    if (parsed.viewMode !== "paged" && parsed.viewMode !== "all") {
+      return null;
+    }
+    if (typeof parsed.summaryExpanded !== "boolean") {
+      return null;
+    }
+
+    return {
+      modelVersionId: parsed.modelVersionId,
+      selections: sanitizeSelectionState(parsed.selections),
+      activeStepId: parsed.activeStepId,
+      priceBook: parsed.priceBook,
+      summaryExpanded: parsed.summaryExpanded,
+      viewMode: parsed.viewMode
+    };
+  } catch {
+    return null;
+  }
+}
+
 function PricePill(props: { info: PricePillInfo; each?: boolean; muted?: boolean }): JSX.Element {
   const toneClass =
     props.info.tone === "included"
-      ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+      ? "border-emerald-200 bg-emerald-50 text-emerald-700"
       : props.info.tone === "negative"
-        ? "bg-sky-50 text-sky-700 border-sky-200"
-        : "bg-slate-100 text-slate-700 border-slate-200";
+        ? "border-sky-200 bg-sky-50 text-sky-700"
+        : "border-slate-200 bg-slate-100 text-slate-700";
 
   return (
     <span
@@ -307,11 +451,17 @@ export function ConfiguratorClient(props: ConfiguratorClientProps): JSX.Element 
   const [error, setError] = useState<string | null>(null);
   const [pricingMode, setPricingMode] = useState<PricingMode>("msrp");
   const [isSummaryExpanded, setIsSummaryExpanded] = useState(false);
-  const [viewMode] = useState<ViewMode>(DEFAULT_VIEW_MODE);
+  const [viewMode, setViewMode] = useState<ViewMode>(DEFAULT_VIEW_MODE);
+  const [activeStepId, setActiveStepId] = useState<string | null>(null);
+  const [isHydrated, setIsHydrated] = useState(false);
+  const [urlModelMismatch, setUrlModelMismatch] = useState<string | null>(null);
 
   const requestIdRef = useRef(0);
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
+  const stepAnchorRef = useRef<Record<string, HTMLElement | null>>({});
   const scrollTopByStepIdRef = useRef<Record<string, number>>({});
+
+  const storageKey = useMemo(() => `ubb:configurator:${props.modelVersionId}:state`, [props.modelVersionId]);
 
   const sortedGroups = useMemo(
     () =>
@@ -322,7 +472,6 @@ export function ConfiguratorClient(props: ConfiguratorClientProps): JSX.Element 
     [props.selectionGroups]
   );
   const stepTree = useMemo(() => buildStepTree(sortedGroups), [sortedGroups]);
-  const [activeStepId, setActiveStepId] = useState(stepTree[0]?.id ?? null);
 
   useEffect(() => {
     if (!activeStepId && stepTree.length > 0) {
@@ -392,8 +541,152 @@ export function ConfiguratorClient(props: ConfiguratorClientProps): JSX.Element 
   }
 
   useEffect(() => {
-    void rerender(props.initialSelections);
-  }, [props.initialSelections, rerender]);
+    if (isHydrated) {
+      return;
+    }
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    const firstStepId = stepTree[0]?.id ?? null;
+    const urlState = parseUrlState(window.location.search);
+    if (urlState.mv && urlState.mv !== props.modelVersionId) {
+      setUrlModelMismatch(urlState.mv);
+      setActiveStepId(firstStepId);
+      setIsHydrated(true);
+      void rerender(props.initialSelections);
+      return;
+    }
+
+    let nextSelections: SelectionState = props.initialSelections;
+    let nextStepId: string | null = firstStepId;
+    let nextBook: PricingMode = "msrp";
+    let nextSummaryExpanded = false;
+    let nextViewMode: ViewMode = DEFAULT_VIEW_MODE;
+
+    const persisted = readPersistedState(window.localStorage.getItem(storageKey));
+    if (persisted && persisted.modelVersionId === props.modelVersionId) {
+      nextSelections = persisted.selections;
+      nextStepId = persisted.activeStepId;
+      nextBook = persisted.priceBook;
+      nextSummaryExpanded = persisted.summaryExpanded;
+      nextViewMode = persisted.viewMode;
+    }
+
+    if (urlState.selections) {
+      nextSelections = urlState.selections;
+    }
+    if (urlState.stepId) {
+      nextStepId = urlState.stepId;
+    }
+    if (urlState.priceBook) {
+      nextBook = urlState.priceBook;
+    }
+    if (urlState.viewMode) {
+      nextViewMode = urlState.viewMode;
+    }
+
+    if (!nextStepId || stepTree.every((step) => step.id !== nextStepId)) {
+      nextStepId = firstStepId;
+    }
+
+    setSelections(nextSelections);
+    setActiveStepId(nextStepId);
+    setPricingMode(nextBook);
+    setIsSummaryExpanded(nextSummaryExpanded);
+    setViewMode(nextViewMode);
+    setIsHydrated(true);
+    void rerender(nextSelections);
+  }, [isHydrated, props.initialSelections, props.modelVersionId, rerender, stepTree, storageKey]);
+
+  useEffect(() => {
+    if (!isHydrated || urlModelMismatch || typeof window === "undefined") {
+      return;
+    }
+
+    const payload = buildPersistedState({
+      modelVersionId: props.modelVersionId,
+      selections,
+      activeStepId,
+      priceBook: pricingMode,
+      summaryExpanded: isSummaryExpanded,
+      viewMode
+    });
+    window.localStorage.setItem(storageKey, JSON.stringify(payload));
+  }, [
+    activeStepId,
+    isHydrated,
+    isSummaryExpanded,
+    pricingMode,
+    props.modelVersionId,
+    selections,
+    storageKey,
+    urlModelMismatch,
+    viewMode
+  ]);
+
+  useEffect(() => {
+    if (!isHydrated || urlModelMismatch || typeof window === "undefined") {
+      return;
+    }
+    const currentUrl = new URL(window.location.href);
+    const params = new URLSearchParams(currentUrl.search);
+    const reserved = new Set(["mv", "step", "book", "mode", "s"]);
+    for (const key of reserved) {
+      params.delete(key);
+    }
+
+    const additions: Array<[string, string]> = [
+      ["mv", props.modelVersionId],
+      ["book", pricingMode],
+      ["mode", viewMode],
+      ["s", encodeSelectionsForUrl(selections)]
+    ];
+    if (activeStepId) {
+      additions.splice(1, 0, ["step", activeStepId]);
+    }
+    for (const [key, value] of additions) {
+      params.append(key, value);
+    }
+
+    const remaining = Array.from(params.entries()).filter(([key]) => !["mv", "step", "book", "mode", "s"].includes(key));
+    const queryParts = additions.map(([key, value]) => `${encodeURIComponent(key)}=${encodeURIComponent(value)}`);
+    remaining
+      .sort((a, b) => (a[0] === b[0] ? a[1].localeCompare(b[1]) : a[0].localeCompare(b[0])))
+      .forEach(([key, value]) => {
+        queryParts.push(`${encodeURIComponent(key)}=${encodeURIComponent(value)}`);
+      });
+
+    const nextSearch = queryParts.length > 0 ? `?${queryParts.join("&")}` : "";
+    const nextUrl = `${currentUrl.pathname}${nextSearch}${currentUrl.hash}`;
+    const currentComparable = `${currentUrl.pathname}${currentUrl.search}${currentUrl.hash}`;
+    if (nextUrl !== currentComparable) {
+      window.history.replaceState(null, "", nextUrl);
+    }
+  }, [activeStepId, isHydrated, pricingMode, props.modelVersionId, selections, urlModelMismatch, viewMode]);
+
+  const goToStep = useCallback(
+    (nextStepId: string) => {
+      const currentStepId = activeStepId;
+      const container = scrollContainerRef.current;
+      if (currentStepId && container) {
+        scrollTopByStepIdRef.current[currentStepId] = container.scrollTop;
+      }
+      setActiveStepId(nextStepId);
+    },
+    [activeStepId]
+  );
+
+  useEffect(() => {
+    if (viewMode !== "paged" || !activeStepId) {
+      return;
+    }
+    const container = scrollContainerRef.current;
+    if (!container) {
+      return;
+    }
+    container.scrollTop = scrollTopByStepIdRef.current[activeStepId] ?? 0;
+  }, [activeStepId, viewMode]);
 
   const pricingSummary = useMemo(() => {
     let selectedItems = 0;
@@ -450,7 +743,7 @@ export function ConfiguratorClient(props: ConfiguratorClientProps): JSX.Element 
   );
 
   const pricePillForOption = useCallback(
-    (groupId: string, versionItemId: string, isQuantity = false): PricePillInfo & { each: boolean } => {
+    (groupId: string, versionItemId: string): PricePillInfo => {
       const groupOption = groupOptionByGroupAndVersionItem.get(`${groupId}:${versionItemId}`);
       const versionItem = versionItemById.get(versionItemId);
       const unitRaw =
@@ -461,55 +754,45 @@ export function ConfiguratorClient(props: ConfiguratorClientProps): JSX.Element 
       const isIncluded = versionItem?.is_included === true || unitPrice === 0;
 
       if (isIncluded) {
-        return {
-          text: "Included",
-          tone: "included",
-          each: isQuantity
-        };
+        return { text: "Included", tone: "included" };
       }
-
       if (unitPrice > 0) {
-        return {
-          text: `+${formatCurrency(unitPrice)}`,
-          tone: "positive",
-          each: isQuantity
-        };
+        return { text: `+${formatCurrency(unitPrice)}`, tone: "positive" };
       }
-
-      return {
-        text: `–${formatCurrency(Math.abs(unitPrice))}`,
-        tone: "negative",
-        each: isQuantity
-      };
+      return { text: `–${formatCurrency(Math.abs(unitPrice))}`, tone: "negative" };
     },
     [groupOptionByGroupAndVersionItem, pricingMode, versionItemById]
   );
 
-  const goToStep = useCallback(
-    (nextStepId: string) => {
-      const currentStepId = activeStepId;
-      const container = scrollContainerRef.current;
-      if (currentStepId && container) {
-        scrollTopByStepIdRef.current[currentStepId] = container.scrollTop;
-      }
-      setActiveStepId(nextStepId);
-    },
-    [activeStepId]
-  );
-
-  useEffect(() => {
-    if (viewMode !== "paged" || !activeStepId) {
-      return;
-    }
-    const container = scrollContainerRef.current;
-    if (!container) {
-      return;
-    }
-    container.scrollTop = scrollTopByStepIdRef.current[activeStepId] ?? 0;
-  }, [activeStepId, viewMode]);
-
   const stepProgress =
     stepTree.length > 0 && activeStepIndex >= 0 ? Math.round(((activeStepIndex + 1) / stepTree.length) * 100) : 0;
+
+  const resetConfiguration = useCallback(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+    window.localStorage.removeItem(storageKey);
+    const firstStepId = stepTree[0]?.id ?? null;
+    setSelections(props.initialSelections);
+    setActiveStepId(firstStepId);
+    setPricingMode("msrp");
+    setIsSummaryExpanded(false);
+    setViewMode(DEFAULT_VIEW_MODE);
+    void rerender(props.initialSelections);
+  }, [props.initialSelections, rerender, stepTree, storageKey]);
+
+  const clearStateAndReload = useCallback(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+    window.localStorage.removeItem(storageKey);
+    const nextUrl = new URL(window.location.href);
+    ["mv", "step", "book", "mode", "s"].forEach((key) => {
+      nextUrl.searchParams.delete(key);
+    });
+    window.history.replaceState(null, "", `${nextUrl.pathname}${nextUrl.search}${nextUrl.hash}`);
+    window.location.reload();
+  }, [storageKey]);
 
   return (
     <section className="grid grid-cols-1 gap-6 lg:grid-cols-12">
@@ -589,37 +872,81 @@ export function ConfiguratorClient(props: ConfiguratorClientProps): JSX.Element 
             <div className="mt-3 flex items-center justify-between gap-2">
               <button
                 type="button"
-                disabled={viewMode === "paged" ? activeStepIndex <= 0 : true}
-                className="rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
+                className={`rounded-md border px-2.5 py-1 text-xs font-medium transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 ${
+                  viewMode === "all"
+                    ? "border-slate-900 bg-slate-900 text-white"
+                    : "border-slate-300 bg-white text-slate-700 hover:bg-slate-50"
+                }`}
+                aria-pressed={viewMode === "all"}
                 onClick={() => {
-                  if (viewMode !== "paged" || activeStepIndex <= 0) {
-                    return;
-                  }
-                  const previousStep = stepTree[activeStepIndex - 1];
-                  if (previousStep) {
-                    goToStep(previousStep.id);
-                  }
+                  setViewMode((previous) => (previous === "all" ? "paged" : "all"));
                 }}
               >
-                Back
+                All Steps
               </button>
               <button
                 type="button"
-                disabled={viewMode === "paged" ? activeStepIndex < 0 || activeStepIndex >= stepTree.length - 1 : true}
-                className="rounded-lg border border-slate-900 bg-slate-900 px-3 py-1.5 text-xs font-medium text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-40"
-                onClick={() => {
-                  if (viewMode !== "paged" || activeStepIndex < 0 || activeStepIndex >= stepTree.length - 1) {
-                    return;
-                  }
-                  const nextStep = stepTree[activeStepIndex + 1];
-                  if (nextStep) {
-                    goToStep(nextStep.id);
-                  }
-                }}
+                className="rounded-md border border-slate-300 px-2.5 py-1 text-xs font-medium text-slate-700 transition hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500"
+                onClick={resetConfiguration}
               >
-                Next
+                Reset Configuration
               </button>
             </div>
+
+            {viewMode === "paged" ? (
+              <div className="mt-3 flex items-center justify-between gap-2">
+                <button
+                  type="button"
+                  disabled={activeStepIndex <= 0}
+                  className="rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
+                  onClick={() => {
+                    if (activeStepIndex <= 0) {
+                      return;
+                    }
+                    const previousStep = stepTree[activeStepIndex - 1];
+                    if (previousStep) {
+                      goToStep(previousStep.id);
+                    }
+                  }}
+                >
+                  Back
+                </button>
+                <button
+                  type="button"
+                  disabled={activeStepIndex < 0 || activeStepIndex >= stepTree.length - 1}
+                  className="rounded-lg border border-slate-900 bg-slate-900 px-3 py-1.5 text-xs font-medium text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-40"
+                  onClick={() => {
+                    if (activeStepIndex < 0 || activeStepIndex >= stepTree.length - 1) {
+                      return;
+                    }
+                    const nextStep = stepTree[activeStepIndex + 1];
+                    if (nextStep) {
+                      goToStep(nextStep.id);
+                    }
+                  }}
+                >
+                  Next
+                </button>
+              </div>
+            ) : (
+              <div className="mt-3 flex gap-2 overflow-x-auto">
+                {stepTree.map((step, index) => (
+                  <button
+                    key={step.id}
+                    type="button"
+                    className="whitespace-nowrap rounded-full border border-slate-300 bg-white px-3 py-1 text-xs font-medium text-slate-700 transition hover:bg-slate-50"
+                    onClick={() => {
+                      const target = stepAnchorRef.current[step.id];
+                      if (target) {
+                        target.scrollIntoView({ block: "start", behavior: "smooth" });
+                      }
+                    }}
+                  >
+                    Jump {index + 1}
+                  </button>
+                ))}
+              </div>
+            )}
           </header>
 
           <div
@@ -632,8 +959,35 @@ export function ConfiguratorClient(props: ConfiguratorClientProps): JSX.Element 
             }}
             className="flex-1 space-y-5 overflow-y-auto px-5 py-4 pb-44 lg:pb-56"
           >
+            {urlModelMismatch ? (
+              <div className="rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900">
+                <p className="font-semibold">This link targets a different model version.</p>
+                <p className="mt-1 text-xs">
+                  URL model: <code>{urlModelMismatch}</code>
+                </p>
+                <p className="text-xs">
+                  Loaded model: <code>{props.modelVersionId}</code>
+                </p>
+                <button
+                  type="button"
+                  className="mt-3 rounded-md border border-amber-400 bg-white px-3 py-1.5 text-xs font-medium text-amber-900 hover:bg-amber-100"
+                  onClick={clearStateAndReload}
+                >
+                  Clear Stored State And Reload
+                </button>
+              </div>
+            ) : null}
+
             {renderedSteps.map((step) => (
-              <section key={step.id} className="space-y-4" aria-label={step.title}>
+              <section
+                key={step.id}
+                id={`cfg-step-${step.id}`}
+                ref={(element) => {
+                  stepAnchorRef.current[step.id] = element;
+                }}
+                className="space-y-4"
+                aria-label={step.title}
+              >
                 <div className="rounded-xl border border-slate-200 bg-slate-50/80 px-4 py-3">
                   <p className="text-xs font-semibold uppercase tracking-[0.1em] text-slate-500">{step.flowTitle}</p>
                   <h3 className="text-base font-semibold text-slate-900">{step.title}</h3>
@@ -654,7 +1008,7 @@ export function ConfiguratorClient(props: ConfiguratorClientProps): JSX.Element 
                             <div className="grid gap-2">
                               {group.options.map((option) => {
                                 const checked = asString(currentValue) === option.versionItemId;
-                                const pill = pricePillForOption(group.id, option.versionItemId, false);
+                                const pill = pricePillForOption(group.id, option.versionItemId);
                                 return (
                                   <label
                                     key={option.id}
@@ -691,7 +1045,7 @@ export function ConfiguratorClient(props: ConfiguratorClientProps): JSX.Element 
                       if (group.selectionMode === "boolean") {
                         const checked = asBoolean(currentValue);
                         const booleanOptionId = group.options[0]?.versionItemId;
-                        const pill = booleanOptionId ? pricePillForOption(group.id, booleanOptionId, false) : null;
+                        const pill = booleanOptionId ? pricePillForOption(group.id, booleanOptionId) : null;
                         return (
                           <div key={group.id} className="rounded-lg border border-slate-300 px-3 py-3">
                             <div className="flex items-center justify-between gap-3">
@@ -741,7 +1095,7 @@ export function ConfiguratorClient(props: ConfiguratorClientProps): JSX.Element 
                             <div className="space-y-2">
                               {group.options.map((option) => {
                                 const checked = selected.has(option.versionItemId);
-                                const pill = pricePillForOption(group.id, option.versionItemId, false);
+                                const pill = pricePillForOption(group.id, option.versionItemId);
                                 return (
                                   <label
                                     key={option.id}
@@ -789,7 +1143,7 @@ export function ConfiguratorClient(props: ConfiguratorClientProps): JSX.Element 
                         typeof currentValue === "string" && currentValue.length > 0
                           ? currentValue
                           : group.options[0]?.versionItemId;
-                      const quantityPill = quantityOptionId ? pricePillForOption(group.id, quantityOptionId, true) : null;
+                      const quantityPill = quantityOptionId ? pricePillForOption(group.id, quantityOptionId) : null;
 
                       return (
                         <div key={group.id} className="rounded-lg border border-slate-300 px-3 py-3">

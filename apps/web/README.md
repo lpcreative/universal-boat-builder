@@ -25,3 +25,31 @@ Optional forced version:
 ```bash
 DIRECTUS_API_URL=http://localhost:8055 DIRECTUS_STATIC_TOKEN=your_token MODEL_VERSION_ID=your_model_version_id pnpm --filter apps/web dev
 ```
+
+## Configurator URL Params
+
+The configurator supports shareable deep-links on `/configurator`:
+
+- `mv=<modelVersionId>` - target model version id for link validation
+- `step=<stepId>` - active flow step id
+- `book=msrp|dealer` - pricing book
+- `mode=paged|all` - step presentation mode
+- `s=<encodedSelections>` - compressed selections payload
+
+Selection encoding format is deterministic:
+
+- prefix: `v1:`
+- payload: `base64url(encodeURIComponent(JSON.stringify(canonicalSelectionState)))`
+- canonical selection state: sorted object keys + sorted string arrays
+
+If decode fails, the UI safely falls back to local state/defaults.
+
+## Reset State
+
+- `Reset Configuration` in the configurator header:
+  - clears local persisted state for the current model version
+  - resets selections to server deterministic defaults
+  - resets step to first step
+  - resets price book to `msrp`
+- If URL `mv` does not match the loaded payload, a warning panel appears with:
+  - `Clear Stored State And Reload`
