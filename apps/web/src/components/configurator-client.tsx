@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import { computePricing, type PricingLineItem } from "@ubb/engine/pricing";
 import { renderMaskTintPreview } from "../lib/client/mask-tint-renderer";
 import type {
@@ -62,6 +63,10 @@ interface UrlState {
   priceBook: PricingMode | null;
   viewMode: ViewMode | null;
   selections: SelectionState | null;
+}
+
+interface CreateQuoteResponse {
+  id: string;
 }
 
 function asStringArray(value: SelectionState[string]): string[] {
@@ -312,6 +317,9 @@ function SummaryBar(props: {
   selectedLineItems: PricingLineItem[];
   includedLineItems: PricingLineItem[];
   warnings: string[];
+  onCreateQuote: () => Promise<void>;
+  isCreatingQuote: boolean;
+  createQuoteError: string | null;
 }): JSX.Element {
   const activePriceLabel = props.pricingMode === "dealer" ? "Dealer" : "MSRP";
 
@@ -355,6 +363,21 @@ function SummaryBar(props: {
         <span>{props.selectedItems} selected</span>
         <span>{props.quantityTotal} quantity</span>
       </div>
+
+      <button
+        type="button"
+        disabled={props.isCreatingQuote}
+        className="mt-3 w-full rounded-lg border border-slate-900 bg-slate-900 px-3 py-2 text-sm font-medium text-white transition hover:bg-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 disabled:cursor-not-allowed disabled:opacity-50"
+        onClick={() => {
+          void props.onCreateQuote();
+        }}
+      >
+        {props.isCreatingQuote ? "Creating Quote..." : "Create Quote"}
+      </button>
+
+      {props.createQuoteError ? (
+        <p className="mt-2 rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-900">{props.createQuoteError}</p>
+      ) : null}
 
       <button
         type="button"
@@ -443,6 +466,7 @@ function SummaryBar(props: {
 }
 
 export function ConfiguratorClient(props: ConfiguratorClientProps): JSX.Element {
+  const router = useRouter();
   const [selections, setSelections] = useState<SelectionState>(props.initialSelections);
   const [dataUrl, setDataUrl] = useState<string | null>(null);
   const [colorByAreaKey, setColorByAreaKey] = useState<Record<string, string>>(props.initialColorByAreaKey);
@@ -455,6 +479,8 @@ export function ConfiguratorClient(props: ConfiguratorClientProps): JSX.Element 
   const [activeStepId, setActiveStepId] = useState<string | null>(null);
   const [isHydrated, setIsHydrated] = useState(false);
   const [urlModelMismatch, setUrlModelMismatch] = useState<string | null>(null);
+  const [isCreatingQuote, setIsCreatingQuote] = useState(false);
+  const [createQuoteError, setCreateQuoteError] = useState<string | null>(null);
 
   const requestIdRef = useRef(0);
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
@@ -793,6 +819,59 @@ export function ConfiguratorClient(props: ConfiguratorClientProps): JSX.Element 
     window.history.replaceState(null, "", `${nextUrl.pathname}${nextUrl.search}${nextUrl.hash}`);
     window.location.reload();
   }, [storageKey]);
+
+  const createQuote = useCallback(async (): Promise<void> => {
+    if (typeof window === "undefined" || isCreatingQuote) {
+      return;
+    }
+
+    setCreateQuoteError(null);
+    setIsCreatingQuote(true);
+    try {
+      const resumeUrl = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+      const response = await fetch("/api/quotes", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json"
+        },
+        body: JSON.stringify({
+          modelVersionId: props.modelVersionId,
+          modelLabel: props.modelLabel,
+          priceBook: pricingMode,
+          selections,
+          encodedSelections: encodeSelectionsForUrl(selections),
+          viewMode,
+          stepId: activeStepId,
+          resumeUrl
+        })
+      });
+
+      const payload = (await response.json().catch(() => null)) as CreateQuoteResponse | { error?: string } | null;
+      if (!response.ok || !payload || typeof payload !== "object" || !("id" in payload) || typeof payload.id !== "string") {
+        const message =
+          payload && typeof payload === "object" && "error" in payload && typeof payload.error === "string"
+            ? payload.error
+            : "Failed to create quote";
+        throw new Error(message);
+      }
+
+      router.push(`/quotes/${payload.id}`);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Failed to create quote";
+      setCreateQuoteError(message);
+    } finally {
+      setIsCreatingQuote(false);
+    }
+  }, [
+    activeStepId,
+    isCreatingQuote,
+    pricingMode,
+    props.modelLabel,
+    props.modelVersionId,
+    router,
+    selections,
+    viewMode
+  ]);
 
   return (
     <section className="grid grid-cols-1 gap-6 lg:grid-cols-12">
@@ -1263,6 +1342,9 @@ export function ConfiguratorClient(props: ConfiguratorClientProps): JSX.Element 
               selectedLineItems={selectedPricingLineItems}
               includedLineItems={includedPricingLineItems}
               warnings={allWarnings}
+              onCreateQuote={createQuote}
+              isCreatingQuote={isCreatingQuote}
+              createQuoteError={createQuoteError}
             />
           </div>
         </div>
@@ -1285,6 +1367,9 @@ export function ConfiguratorClient(props: ConfiguratorClientProps): JSX.Element 
           selectedLineItems={selectedPricingLineItems}
           includedLineItems={includedPricingLineItems}
           warnings={allWarnings}
+          onCreateQuote={createQuote}
+          isCreatingQuote={isCreatingQuote}
+          createQuoteError={createQuoteError}
         />
       </div>
     </section>
