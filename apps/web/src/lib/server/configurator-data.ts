@@ -1,27 +1,16 @@
 import "server-only";
 
-import { getModelVersionBundle } from "@ubb/cms-adapter-directus";
+import { getModelVersionBundle, getPublishedModels } from "@ubb/cms-adapter-directus";
+import { buildColorByAreaKey, render_view_to_data_url } from "@ubb/compiler";
+import { createDirectusAssetUrlResolver } from "@ubb/engine";
 import type {
   ColorPaletteItemRecord,
   GroupOptionRecord,
   ModelVersionBundle,
-  PublishedModel,
-  RenderLayerRecord,
   SelectionGroupRecord,
   VersionItemRecord
 } from "@ubb/cms-adapter-directus";
-import { buildColorByAreaKey, createDirectusAssetUrlResolver } from "@ubb/engine";
-import {
-  bySortThenId,
-  type ConfigFlowSectionView,
-  type ConfigFlowStepView,
-  type ConfigOptionView,
-  type ConfigRenderLayerView,
-  type ConfigRenderView,
-  type ConfigSelectionGroupView,
-  type ConfiguratorClientData,
-  type SelectionState
-} from "../configurator-shared";
+import { bySortThenId, type ConfigOptionView, type ConfigSelectionGroupView, type SelectionState } from "../configurator-shared";
 
 export interface PublishedModelVersionChoice {
   modelName: string;
@@ -29,9 +18,13 @@ export interface PublishedModelVersionChoice {
   label: string;
 }
 
-interface RawModelVersion {
-  model: PublishedModel;
-  version: PublishedModel["model_versions"][number];
+export interface InitialConfiguratorData {
+  modelVersionId: string;
+  selectionGroups: ConfigSelectionGroupView[];
+  selections: SelectionState;
+  initialDataUrl: string | null;
+  colorByAreaKey: Record<string, string>;
+  hasRenderView: boolean;
 }
 
 function readModelVersionIdFromEnv(): string | null {
@@ -235,15 +228,6 @@ function toOptions(args: {
       id: option.id,
       versionItemId: option.version_item,
       label: optionLabel(option, item),
-      msrp: item?.msrp ?? null,
-      dealer: item?.dealer_price ?? null,
-      overrideMsrp: option.override_msrp ?? null,
-      overrideDealer: option.override_dealer_price ?? null,
-      colorHex: item?.item_detail?.color_hex ?? null,
-      category: item?.item_detail?.item_category ?? null,
-      vendorCode: item?.item_detail?.vendor_code ?? null,
-      internalCode: item?.item_detail?.internal_code ?? null,
-      isIncluded: item?.is_included === true,
       sort: option.sort ?? null
     };
   });
@@ -256,12 +240,9 @@ function toGroupsView(bundle: ModelVersionBundle): ConfigSelectionGroupView[] {
 
   return sortedGroups.map((group) => ({
     id: group.id,
-    sectionId: group.section,
     key: selectionStateKey(group),
     title: group.title,
     selectionMode: group.selection_mode,
-    helpText: group.help_text ?? null,
-    colorAreaKey: group.color_area_detail?.key ?? null,
     sort: group.sort ?? null,
     options: toOptions({
       groupOptions: groupOptionsByGroupId.get(group.id) ?? [],
@@ -270,133 +251,32 @@ function toGroupsView(bundle: ModelVersionBundle): ConfigSelectionGroupView[] {
   }));
 }
 
-function toFlowStepsView(bundle: ModelVersionBundle): ConfigFlowStepView[] {
-  const groups = toGroupsView(bundle);
-  const groupsBySectionId = new Map<string, ConfigSelectionGroupView[]>();
-  for (const group of groups) {
-    const row = groupsBySectionId.get(group.sectionId) ?? [];
-    row.push(group);
-    groupsBySectionId.set(group.sectionId, row);
-  }
-
-  const sortedFlows = [...bundle.flows].sort(bySortThenId);
-  const selectedFlow = sortedFlows[0] ?? null;
-  const selectedFlowSteps = [...bundle.flow_steps]
-    .filter((step) => (selectedFlow ? step.flow === selectedFlow.id : true))
-    .sort(bySortThenId);
-
-  const sectionsByStepId = new Map<string, ConfigFlowSectionView[]>();
-  const sortedSections = [...bundle.flow_sections]
-    .filter((section) => selectedFlowSteps.some((step) => step.id === section.step))
-    .sort(bySortThenId);
-
-  for (const section of sortedSections) {
-    const row = sectionsByStepId.get(section.step) ?? [];
-    row.push({
-      id: section.id,
-      stepId: section.step,
-      title: section.title,
-      sort: section.sort ?? null,
-      groups: [...(groupsBySectionId.get(section.id) ?? [])].sort(bySortThenId)
-    });
-    sectionsByStepId.set(section.step, row);
-  }
-
-  const steps = selectedFlowSteps.map((step) => ({
-    id: step.id,
-    key: step.key,
-    title: step.title,
-    helpText: step.help_text ?? null,
-    sort: step.sort ?? null,
-    sections: [...(sectionsByStepId.get(step.id) ?? [])].sort(bySortThenId)
-  }));
-
-  if (steps.length > 0) {
-    return steps;
-  }
-
-  const fallbackSection: ConfigFlowSectionView = {
-    id: "fallback-section",
-    stepId: "fallback-step",
-    title: "Configuration",
-    sort: null,
-    groups: groups
-  };
-
-  return [
-    {
-      id: "fallback-step",
-      key: "configuration",
-      title: "Configuration",
-      helpText: null,
-      sort: null,
-      sections: [fallbackSection]
-    }
-  ];
-}
-
-function toRenderViews(args: { bundle: ModelVersionBundle; apiUrl: string }): ConfigRenderView[] {
-  const fileUrlForId = createDirectusAssetUrlResolver(args.apiUrl);
-  const sortedViews = [...args.bundle.render_views].sort(bySortThenId);
-  const sortedLayers = [...args.bundle.render_layers].sort(bySortThenId);
-
-  const layersByViewId = new Map<string, ConfigRenderLayerView[]>();
-  for (const layer of sortedLayers) {
-    const row = layersByViewId.get(layer.render_view) ?? [];
-    row.push(toRenderLayerView(layer, fileUrlForId));
-    layersByViewId.set(layer.render_view, row);
-  }
-
-  return sortedViews.map((view) => ({
-    id: view.id,
-    key: view.key,
-    title: view.title,
-    sort: view.sort ?? null,
-    layers: [...(layersByViewId.get(view.id) ?? [])].sort(bySortThenId)
-  }));
-}
-
-function toRenderLayerView(layer: RenderLayerRecord, fileUrlForId: (fileId: string) => string): ConfigRenderLayerView {
-  return {
-    id: layer.id,
-    renderViewId: layer.render_view,
-    key: layer.key,
-    layerType: layer.layer_type,
-    assetId: layer.asset,
-    assetUrl: fileUrlForId(layer.asset),
-    maskAssetId: layer.mask_asset ?? null,
-    maskAssetUrl: layer.mask_asset ? fileUrlForId(layer.mask_asset) : null,
-    colorAreaKey: layer.color_area_detail?.key ?? null,
-    blendMode: layer.blend_mode ?? null,
-    opacity: layer.opacity ?? null,
-    sort: layer.sort ?? null
-  };
-}
-
 export async function listPublishedModelVersionChoices(): Promise<PublishedModelVersionChoice[]> {
-  const { getPublishedModels } = await import("@ubb/cms-adapter-directus");
   const models = await getPublishedModels();
-  const rows: RawModelVersion[] = [];
+  const choices: PublishedModelVersionChoice[] = models.flatMap((model) =>
+    model.model_versions.map((version) => ({
+      modelName: model.name,
+      modelVersionId: version.id,
+      label: `${model.name} - ${versionText(version)}`
+    }))
+  );
 
-  for (const model of models) {
-    const versions = model.model_versions.filter((version) => version.status === "published");
-    for (const version of versions) {
-      rows.push({ model, version });
-    }
+  if (process.env.NODE_ENV !== "production") {
+    console.info(
+      `[configurator] discovery models=${models.length} versions=${choices.length} firstVersion=${
+        choices[0]?.modelVersionId ?? "none"
+      }`
+    );
   }
-
-  return rows.map(({ model, version }) => ({
-    modelName: model.name,
-    modelVersionId: version.id,
-    label: `${model.name} - ${versionText(version)}`
-  }));
+  return choices;
 }
 
 export async function pickModelVersion(args: {
   selectedModelVersionId: string | null;
 }): Promise<{
   modelVersionId: string | null;
-  source: "env" | "single" | "selected" | "none";
+  source: "env" | "single" | "selected" | "first" | "invalid_selected" | "none";
+  reason: string;
   choices: PublishedModelVersionChoice[];
 }> {
   const envModelVersionId = readModelVersionIdFromEnv();
@@ -406,6 +286,7 @@ export async function pickModelVersion(args: {
     return {
       modelVersionId: envModelVersionId,
       source: "env",
+      reason: "env_model_version_id",
       choices
     };
   }
@@ -414,6 +295,24 @@ export async function pickModelVersion(args: {
     return {
       modelVersionId: null,
       source: "none",
+      reason: "no_published_versions_discovered",
+      choices
+    };
+  }
+
+  if (args.selectedModelVersionId) {
+    if (choices.some((choice) => choice.modelVersionId === args.selectedModelVersionId)) {
+      return {
+        modelVersionId: args.selectedModelVersionId,
+        source: "selected",
+        reason: "query_selected_model_version",
+        choices
+      };
+    }
+    return {
+      modelVersionId: null,
+      source: "invalid_selected",
+      reason: "query_selected_model_version_not_found",
       choices
     };
   }
@@ -422,44 +321,45 @@ export async function pickModelVersion(args: {
     return {
       modelVersionId: choices[0].modelVersionId,
       source: "single",
-      choices
-    };
-  }
-
-  if (args.selectedModelVersionId && choices.some((choice) => choice.modelVersionId === args.selectedModelVersionId)) {
-    return {
-      modelVersionId: args.selectedModelVersionId,
-      source: "selected",
+      reason: "single_published_version",
       choices
     };
   }
 
   return {
-    modelVersionId: null,
-    source: "none",
+    modelVersionId: choices[0]?.modelVersionId ?? null,
+    source: "first",
+    reason: "default_first_published_version",
     choices
   };
 }
 
 export async function createInitialConfiguratorData(args: {
   modelVersionId: string;
-  apiUrl: string;
-}): Promise<ConfiguratorClientData> {
+}): Promise<InitialConfiguratorData> {
   const bundle = await getModelVersionBundle(args.modelVersionId);
   if (!bundle) {
     throw new Error(`No published model version bundle found for "${args.modelVersionId}".`);
   }
   const selections = createDeterministicSelections(bundle);
   const colorByAreaKey = buildColorByAreaKey(bundle, selections);
-  const renderViews = toRenderViews({ bundle, apiUrl: args.apiUrl });
+
+  const initialDataUrl = bundle.render_views[0]
+    ? await render_view_to_data_url({
+        view: bundle.render_views[0],
+        layers: bundle.render_layers,
+        selections,
+        colorByAreaKey,
+        fileUrlForId: createDirectusAssetUrlResolver()
+      })
+    : null;
 
   return {
     modelVersionId: bundle.id,
-    bundle,
-    steps: toFlowStepsView(bundle),
-    renderViews,
-    initialRenderViewId: renderViews[0]?.id ?? null,
+    selectionGroups: toGroupsView(bundle),
     selections,
-    colorByAreaKey
+    initialDataUrl,
+    colorByAreaKey,
+    hasRenderView: bundle.render_views.length > 0
   };
 }
