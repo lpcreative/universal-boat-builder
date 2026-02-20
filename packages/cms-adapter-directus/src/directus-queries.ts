@@ -1,5 +1,5 @@
 import { readItems } from "@directus/sdk";
-import { directusClient } from "./directus-client.js";
+import { getDirectusClient } from "./directus-client.js";
 import type {
   BoatModelRecord,
   ColorAreaRecord,
@@ -151,7 +151,7 @@ function toVersionLabel(year: number | null, trim: string | null, fallback: stri
 }
 
 async function readMany(collection: string, query: RawRecord): Promise<RawRecord[]> {
-  return (await directusClient.request(readItems(collection as never, query as never) as never)) as RawRecord[];
+  return (await getDirectusClient().request(readItems(collection as never, query as never) as never)) as RawRecord[];
 }
 
 function toVersionRevisionRecord(row: RawRecord): VersionRevisionRecord | null {

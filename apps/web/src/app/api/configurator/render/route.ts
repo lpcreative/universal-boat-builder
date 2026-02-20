@@ -3,6 +3,8 @@ import { NextResponse } from "next/server";
 import { bySortThenId, sanitizeSelectionState } from "../../../../lib/configurator-shared";
 import { checkRequiredDirectusEnv } from "../../../../lib/server/directus-env";
 
+export const runtime = "nodejs";
+
 interface RenderRequestBody {
   modelVersionId?: unknown;
   selections?: unknown;

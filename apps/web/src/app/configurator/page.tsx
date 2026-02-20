@@ -3,6 +3,8 @@ import { ConfiguratorClient } from "../../components/configurator-client";
 import { createInitialConfiguratorData, pickModelVersion } from "../../lib/server/configurator-data";
 import { checkRequiredDirectusEnv } from "../../lib/server/directus-env";
 
+export const runtime = "nodejs";
+
 interface ConfiguratorPageProps {
   searchParams?: Record<string, string | string[] | undefined>;
 }
@@ -96,7 +98,10 @@ MODEL_VERSION_ID=`}
   }
 
   try {
-    const data = await createInitialConfiguratorData({ modelVersionId: selection.modelVersionId });
+    const data = await createInitialConfiguratorData({
+      modelVersionId: selection.modelVersionId,
+      apiUrl: env.apiUrl
+    });
 
     return (
       <main className="mx-auto grid w-full max-w-5xl gap-4 px-4 py-8 md:px-6">
@@ -119,8 +124,8 @@ MODEL_VERSION_ID=`}
           showCopyModelVersionIdButton={selection.choices.length > 1}
           selectionGroups={data.selectionGroups}
           initialSelections={data.selections}
-          initialDataUrl={data.initialDataUrl}
           initialColorByAreaKey={data.colorByAreaKey}
+          renderConfig={data.renderConfig}
         />
       </main>
     );

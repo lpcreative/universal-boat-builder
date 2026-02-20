@@ -1,3 +1,5 @@
+import type { ModelVersionBundle } from "@ubb/cms-adapter-directus";
+
 export type SelectionValue = string | string[] | boolean | number | null;
 export type SelectionState = Record<string, SelectionValue>;
 
@@ -15,6 +17,18 @@ export interface ConfigSelectionGroupView {
   selectionMode: "single" | "multi" | "boolean" | "quantity";
   sort: number | null;
   options: ConfigOptionView[];
+}
+
+export type ClientColorSelectionBundle = Pick<
+  ModelVersionBundle,
+  "selection_groups" | "group_options" | "version_items" | "color_palette_items"
+>;
+
+export interface ClientRenderConfig {
+  assetBaseUrl: string;
+  renderViews: ModelVersionBundle["render_views"];
+  renderLayers: ModelVersionBundle["render_layers"];
+  colorSelectionBundle: ClientColorSelectionBundle;
 }
 
 export function bySortThenId<T extends { sort?: number | null; id: string }>(a: T, b: T): number {
