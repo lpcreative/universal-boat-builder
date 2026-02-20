@@ -78,3 +78,22 @@ Legend: `R` = read, `C` = create, `U` = update, `D` = delete.
 - Read active models + published versions only.
 - Optional submission creation with tightly scoped fields.
 - No read access to submissions/documents after create unless explicitly designed.
+
+### Web configurator app-reader token (required reads)
+- If `@ubb/web` loads render assets directly from Directus `/assets/:id`, the token used by `DIRECTUS_STATIC_TOKEN` must have read access to:
+- `boat_models`
+- `model_versions`
+- `version_revisions`
+- `version_items`
+- `items`
+- `flows`
+- `flow_steps`
+- `flow_sections`
+- `selection_groups`
+- `group_options`
+- `color_areas`
+- `color_palettes`
+- `color_palette_items`
+- `render_views`
+- `render_layers`
+- `directus_files`

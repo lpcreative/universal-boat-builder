@@ -1,5 +1,5 @@
 import { readItems } from "@directus/sdk";
-import { directusClient } from "../directus-client.js";
+import { getDirectusClient } from "../directus-client.js";
 
 type DirectusErrorPayload = {
   errors?: Array<{
@@ -97,7 +97,7 @@ async function validateRequiredSchema(): Promise<void> {
 
   for (const [collection, fields] of Object.entries(requiredCollections)) {
     try {
-      await directusClient.request(
+      await getDirectusClient().request(
         readItems(collection as never, { limit: 1, fields } as never) as never
       );
     } catch (error) {

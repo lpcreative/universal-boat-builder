@@ -1,21 +1,16 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
-import type { ConfigSelectionGroupView, SelectionState } from "../lib/configurator-shared";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { renderMaskTintPreview } from "../lib/client/mask-tint-renderer";
+import type { ClientRenderConfig, ConfigSelectionGroupView, SelectionState } from "../lib/configurator-shared";
 
 interface ConfiguratorClientProps {
   modelVersionId: string;
   showCopyModelVersionIdButton: boolean;
   selectionGroups: ConfigSelectionGroupView[];
   initialSelections: SelectionState;
-  initialDataUrl: string | null;
   initialColorByAreaKey: Record<string, string>;
-}
-
-interface RenderResponse {
-  dataUrl: string | null;
-  colorByAreaKey: Record<string, string>;
-  warnings: string[];
+  renderConfig: ClientRenderConfig;
 }
 
 function asStringArray(value: SelectionState[string]): string[] {
@@ -36,7 +31,7 @@ function asString(value: SelectionState[string]): string {
 
 export function ConfiguratorClient(props: ConfiguratorClientProps): JSX.Element {
   const [selections, setSelections] = useState<SelectionState>(props.initialSelections);
-  const [dataUrl, setDataUrl] = useState<string | null>(props.initialDataUrl);
+  const [dataUrl, setDataUrl] = useState<string | null>(null);
   const [colorByAreaKey, setColorByAreaKey] = useState<Record<string, string>>(props.initialColorByAreaKey);
   const [isRendering, setIsRendering] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -48,7 +43,7 @@ export function ConfiguratorClient(props: ConfiguratorClientProps): JSX.Element 
     [props.selectionGroups]
   );
 
-  async function rerender(nextSelections: SelectionState): Promise<void> {
+  const rerender = useCallback(async (nextSelections: SelectionState): Promise<void> => {
     const requestId = requestIdRef.current + 1;
     requestIdRef.current = requestId;
 
@@ -56,23 +51,10 @@ export function ConfiguratorClient(props: ConfiguratorClientProps): JSX.Element 
     setError(null);
 
     try {
-      const response = await fetch("/api/configurator/render", {
-        method: "POST",
-        headers: {
-          "content-type": "application/json"
-        },
-        body: JSON.stringify({
-          modelVersionId: props.modelVersionId,
-          selections: nextSelections
-        })
+      const payload = await renderMaskTintPreview({
+        renderConfig: props.renderConfig,
+        selections: nextSelections
       });
-
-      if (!response.ok) {
-        const payload = (await response.json().catch(() => ({}))) as { error?: string };
-        throw new Error(payload.error ?? `Render request failed with status ${response.status}`);
-      }
-
-      const payload = (await response.json()) as RenderResponse;
       if (requestId !== requestIdRef.current) {
         return;
       }
@@ -91,12 +73,16 @@ export function ConfiguratorClient(props: ConfiguratorClientProps): JSX.Element 
         setIsRendering(false);
       }
     }
-  }
+  }, [props.renderConfig]);
 
   function updateSelections(nextSelections: SelectionState): void {
     setSelections(nextSelections);
     void rerender(nextSelections);
   }
+
+  useEffect(() => {
+    void rerender(props.initialSelections);
+  }, [props.initialSelections, rerender]);
 
   return (
     <section className="grid gap-4">
