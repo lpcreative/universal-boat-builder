@@ -1,5 +1,5 @@
 import { readItems } from "@directus/sdk";
-import { directusClient } from "../directus-client.js";
+import { createDirectusClientFromEnv } from "../directus-client.js";
 
 type DirectusErrorPayload = {
   errors?: Array<{
@@ -63,7 +63,7 @@ function readEnv(name: string): string | undefined {
   return processLike?.env?.[name];
 }
 
-async function validateRequiredSchema(): Promise<void> {
+async function validateRequiredSchema(client: { request: (query: unknown) => Promise<unknown> }): Promise<void> {
   const requiredCollections: Record<string, string[]> = {
     boat_models: ["id", "name", "model_code", "sort"],
     model_versions: ["id", "boat_model", "year", "trim", "status", "published_revision", "sort"],
@@ -97,7 +97,7 @@ async function validateRequiredSchema(): Promise<void> {
 
   for (const [collection, fields] of Object.entries(requiredCollections)) {
     try {
-      await directusClient.request(
+      await client.request(
         readItems(collection as never, { limit: 1, fields } as never) as never
       );
     } catch (error) {
@@ -169,7 +169,8 @@ async function main(): Promise<void> {
   console.log(`- DIRECTUS_API_URL: ${directusApiUrl}`);
 
   try {
-    await validateRequiredSchema();
+    const directusClient = createDirectusClientFromEnv();
+    await validateRequiredSchema(directusClient as { request: (query: unknown) => Promise<unknown> });
 
     const { getModelVersionBundle, getPublishedModels } = await import("../directus-cms-adapter.js");
     const models = await getPublishedModels();

@@ -20,7 +20,7 @@ export async function POST(request: Request): Promise<Response> {
   }
 
   try {
-    const [{ getModelVersionBundle }, { buildColorByAreaKey, render_view_to_data_url }, { createDirectusAssetUrlResolver }] =
+    const [{ getModelVersionBundle }, { render_view_to_data_url }, { buildColorByAreaKey, createDirectusAssetUrlResolver }] =
       await Promise.all([import("@ubb/cms-adapter-directus"), import("@ubb/compiler"), import("@ubb/engine")]);
     const body = (await request.json()) as RenderRequestBody;
     const modelVersionId = typeof body.modelVersionId === "string" ? body.modelVersionId : "";

@@ -7,10 +7,10 @@ import {
   type SelectionGroupRecord,
   type VersionItemRecord
 } from "@ubb/cms-adapter-directus";
-import { buildColorByAreaKey, render_view_to_data_url } from "@ubb/compiler";
-
-type SelectionValue = string | string[] | boolean | number | null;
-export type SelectionState = Record<string, SelectionValue>;
+import { render_view_to_data_url } from "@ubb/compiler";
+import { buildColorByAreaKey } from "./color-selection.js";
+import { createDirectusAssetUrlResolver } from "./directus-assets.js";
+import type { SelectionState } from "./selection-state.js";
 
 export interface ConfiguratorSession {
   modelVersionId: string;
@@ -33,11 +33,6 @@ function bySortThenId<T extends { sort?: number | null; id: string }>(a: T, b: T
     return aSort - bSort;
   }
   return a.id.localeCompare(b.id);
-}
-
-function readEnv(name: string): string | undefined {
-  const processLike = (globalThis as { process?: { env?: Record<string, string | undefined> } }).process;
-  return processLike?.env?.[name];
 }
 
 function selectionStateKey(group: Pick<SelectionGroupRecord, "id" | "key">): string {
@@ -272,17 +267,6 @@ export function collectTintLayerWarnings(bundle: ModelVersionBundle): string[] {
   }
 
   return warnings;
-}
-
-export function createDirectusAssetUrlResolver(
-  apiBaseUrl = readEnv("DIRECTUS_API_URL") ?? readEnv("DIRECTUS_URL")
-): (fileId: string) => string {
-  if (!apiBaseUrl) {
-    throw new Error("DIRECTUS_API_URL (or DIRECTUS_URL) is required to resolve render asset URLs.");
-  }
-
-  const base = apiBaseUrl.replace(/\/$/, "");
-  return (fileId: string) => `${base}/assets/${fileId}`;
 }
 
 export async function createConfiguratorSession(

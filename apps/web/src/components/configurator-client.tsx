@@ -1,21 +1,17 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
-import type { ConfigSelectionGroupView, SelectionState } from "../lib/configurator-shared";
+import { buildColorByAreaKey, computePricing, type PricingLineItem, type SelectionState } from "@ubb/engine";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { renderMaskTintPreviewDataUrl } from "../lib/client/mask-tint-renderer";
+import type {
+  ConfigFlowStepView,
+  ConfigSelectionGroupView,
+  ConfiguratorClientData
+} from "../lib/configurator-shared";
 
 interface ConfiguratorClientProps {
-  modelVersionId: string;
   showCopyModelVersionIdButton: boolean;
-  selectionGroups: ConfigSelectionGroupView[];
-  initialSelections: SelectionState;
-  initialDataUrl: string | null;
-  initialColorByAreaKey: Record<string, string>;
-}
-
-interface RenderResponse {
-  dataUrl: string | null;
-  colorByAreaKey: Record<string, string>;
-  warnings: string[];
+  data: ConfiguratorClientData;
 }
 
 function asStringArray(value: SelectionState[string]): string[] {
@@ -34,206 +30,410 @@ function asString(value: SelectionState[string]): string {
   return typeof value === "string" ? value : "";
 }
 
+function formatMoney(value: number): string {
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+    maximumFractionDigits: 2
+  }).format(value);
+}
+
+function nextMultiValue(args: {
+  group: ConfigSelectionGroupView;
+  currentValue: SelectionState[string];
+  optionVersionItemId: string;
+  checked: boolean;
+}): string[] {
+  const selected = new Set(asStringArray(args.currentValue));
+  if (args.checked) {
+    selected.add(args.optionVersionItemId);
+  } else {
+    selected.delete(args.optionVersionItemId);
+  }
+
+  const next: string[] = [];
+  for (const option of args.group.options) {
+    if (selected.has(option.versionItemId)) {
+      next.push(option.versionItemId);
+    }
+  }
+  return next;
+}
+
+function findStepIndex(steps: ConfigFlowStepView[], stepId: string | null): number {
+  if (!stepId) {
+    return 0;
+  }
+  const index = steps.findIndex((step) => step.id === stepId);
+  return index >= 0 ? index : 0;
+}
+
 export function ConfiguratorClient(props: ConfiguratorClientProps): JSX.Element {
-  const [selections, setSelections] = useState<SelectionState>(props.initialSelections);
-  const [dataUrl, setDataUrl] = useState<string | null>(props.initialDataUrl);
-  const [colorByAreaKey, setColorByAreaKey] = useState<Record<string, string>>(props.initialColorByAreaKey);
+  const [selections, setSelections] = useState<SelectionState>(props.data.selections);
+  const [activeStepId, setActiveStepId] = useState<string | null>(props.data.steps[0]?.id ?? null);
+  const [activeRenderViewId, setActiveRenderViewId] = useState<string | null>(props.data.initialRenderViewId);
+  const [audience, setAudience] = useState<"public" | "dealer">("public");
+  const [dataUrl, setDataUrl] = useState<string | null>(null);
   const [isRendering, setIsRendering] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [renderError, setRenderError] = useState<string | null>(null);
 
   const requestIdRef = useRef(0);
 
-  const sortedGroups = useMemo(
-    () => [...props.selectionGroups].sort((a, b) => (a.sort ?? Number.MAX_SAFE_INTEGER) - (b.sort ?? Number.MAX_SAFE_INTEGER) || a.id.localeCompare(b.id)),
-    [props.selectionGroups]
+  const steps = useMemo(() => [...props.data.steps], [props.data.steps]);
+  const activeStepIndex = useMemo(() => findStepIndex(steps, activeStepId), [steps, activeStepId]);
+  const activeStep = steps[activeStepIndex] ?? null;
+
+  const activeRenderView = useMemo(
+    () => props.data.renderViews.find((view) => view.id === activeRenderViewId) ?? props.data.renderViews[0] ?? null,
+    [props.data.renderViews, activeRenderViewId]
   );
 
-  async function rerender(nextSelections: SelectionState): Promise<void> {
-    const requestId = requestIdRef.current + 1;
-    requestIdRef.current = requestId;
-
-    setIsRendering(true);
-    setError(null);
-
-    try {
-      const response = await fetch("/api/configurator/render", {
-        method: "POST",
-        headers: {
-          "content-type": "application/json"
-        },
-        body: JSON.stringify({
-          modelVersionId: props.modelVersionId,
-          selections: nextSelections
-        })
-      });
-
-      if (!response.ok) {
-        const payload = (await response.json().catch(() => ({}))) as { error?: string };
-        throw new Error(payload.error ?? `Render request failed with status ${response.status}`);
-      }
-
-      const payload = (await response.json()) as RenderResponse;
-      if (requestId !== requestIdRef.current) {
-        return;
-      }
-
-      setDataUrl(payload.dataUrl);
-      setColorByAreaKey(payload.colorByAreaKey);
-    } catch (unknownError) {
-      if (requestId !== requestIdRef.current) {
-        return;
-      }
-
-      const message = unknownError instanceof Error ? unknownError.message : "Unknown render error";
-      setError(message);
-    } finally {
-      if (requestId === requestIdRef.current) {
-        setIsRendering(false);
+  const assetUrlById = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const view of props.data.renderViews) {
+      for (const layer of view.layers) {
+        map.set(layer.assetId, layer.assetUrl);
+        if (layer.maskAssetId && layer.maskAssetUrl) {
+          map.set(layer.maskAssetId, layer.maskAssetUrl);
+        }
       }
     }
-  }
+    return map;
+  }, [props.data.renderViews]);
+
+  const colorByAreaKey = useMemo(() => {
+    const warnings: string[] = [];
+    const result = buildColorByAreaKey(props.data.bundle, selections, (message: unknown) => warnings.push(String(message)));
+    return result;
+  }, [props.data.bundle, selections]);
+
+  const pricing = useMemo(() => computePricing(props.data.bundle, selections, { audience }), [props.data.bundle, selections, audience]);
+
+  useEffect(() => {
+    if (!steps.some((step) => step.id === activeStepId)) {
+      setActiveStepId(steps[0]?.id ?? null);
+    }
+  }, [steps, activeStepId]);
+
+  useEffect(() => {
+    if (!activeRenderView) {
+      setDataUrl(null);
+      return;
+    }
+
+    const requestId = requestIdRef.current + 1;
+    requestIdRef.current = requestId;
+    setIsRendering(true);
+    setRenderError(null);
+
+    const assetUrlResolver = (assetId: string): string => assetUrlById.get(assetId) ?? "";
+
+    void renderMaskTintPreviewDataUrl({
+      renderView: activeRenderView,
+      layers: activeRenderView.layers,
+      colorByAreaKey,
+      assetUrlResolver
+    })
+      .then((nextDataUrl) => {
+        if (requestId !== requestIdRef.current) {
+          return;
+        }
+        setDataUrl(nextDataUrl);
+      })
+      .catch((error: unknown) => {
+        if (requestId !== requestIdRef.current) {
+          return;
+        }
+        const message = error instanceof Error ? error.message : "Failed to render preview";
+        setRenderError(message);
+      })
+      .finally(() => {
+        if (requestId === requestIdRef.current) {
+          setIsRendering(false);
+        }
+      });
+  }, [activeRenderView, colorByAreaKey, assetUrlById]);
 
   function updateSelections(nextSelections: SelectionState): void {
     setSelections(nextSelections);
-    void rerender(nextSelections);
   }
 
+  function nextStep(delta: -1 | 1): void {
+    const nextIndex = activeStepIndex + delta;
+    if (nextIndex < 0 || nextIndex >= steps.length) {
+      return;
+    }
+    setActiveStepId(steps[nextIndex].id);
+  }
+
+  const selectedItems = pricing.lineItems.filter((item: PricingLineItem) => item.source === "selection");
+  const includedItems = pricing.lineItems.filter((item: PricingLineItem) => item.source === "included");
+
   return (
-    <section className="grid gap-4">
-      <div className="rounded-lg border border-slate-200 bg-white p-3">
-        {dataUrl ? (
-          <img src={dataUrl} alt="Composite preview" className="w-full max-w-[720px] rounded border border-slate-200" />
-        ) : (
-          <p className="text-sm text-slate-700">No render view is configured for this model version.</p>
-        )}
+    <section className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_360px] lg:items-start">
+      <div className="grid gap-4">
+        <div className="rounded-lg border border-slate-200 bg-white p-4">
+          <div className="flex flex-wrap gap-2">
+            {steps.map((step, index) => (
+              <button
+                key={step.id}
+                type="button"
+                className={`rounded-md border px-3 py-1.5 text-sm ${
+                  index === activeStepIndex
+                    ? "border-slate-900 bg-slate-900 text-white"
+                    : "border-slate-300 bg-white text-slate-700 hover:bg-slate-50"
+                }`}
+                onClick={() => setActiveStepId(step.id)}
+              >
+                {index + 1}. {step.title}
+              </button>
+            ))}
+          </div>
+          <div className="mt-4 flex items-center gap-2">
+            <button
+              type="button"
+              className="rounded-md border border-slate-300 px-3 py-1.5 text-sm text-slate-700 disabled:opacity-50"
+              onClick={() => nextStep(-1)}
+              disabled={activeStepIndex <= 0}
+            >
+              Back
+            </button>
+            <button
+              type="button"
+              className="rounded-md bg-slate-900 px-3 py-1.5 text-sm text-white disabled:opacity-50"
+              onClick={() => nextStep(1)}
+              disabled={activeStepIndex >= steps.length - 1}
+            >
+              Next
+            </button>
+          </div>
+        </div>
+
+        <div className="rounded-lg border border-slate-200 bg-white p-4">
+          {activeStep ? (
+            <div className="grid gap-4">
+              {activeStep.helpText ? <p className="text-sm text-slate-600">{activeStep.helpText}</p> : null}
+              {activeStep.sections.map((section) => (
+                <section key={section.id} className="grid gap-3 rounded-md border border-slate-200 p-3">
+                  <h3 className="text-sm font-semibold text-slate-900">{section.title}</h3>
+                  {section.groups.map((group) => {
+                    const currentValue = selections[group.key];
+
+                    if (group.selectionMode === "single") {
+                      return (
+                        <label key={group.id} className="grid gap-1.5">
+                          <span className="text-sm font-medium text-slate-800">{group.title}</span>
+                          <select
+                            className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm"
+                            value={asString(currentValue)}
+                            onChange={(event) => {
+                              updateSelections({
+                                ...selections,
+                                [group.key]: event.target.value
+                              });
+                            }}
+                          >
+                            <option value="">Select</option>
+                            {group.options.map((option) => (
+                              <option key={option.id} value={option.versionItemId}>
+                                {option.label}
+                              </option>
+                            ))}
+                          </select>
+                          {group.helpText ? <p className="text-xs text-slate-500">{group.helpText}</p> : null}
+                        </label>
+                      );
+                    }
+
+                    if (group.selectionMode === "boolean") {
+                      return (
+                        <label key={group.id} className="flex items-center gap-2 text-sm text-slate-800">
+                          <input
+                            type="checkbox"
+                            className="h-4 w-4 rounded border-slate-300"
+                            checked={asBoolean(currentValue)}
+                            onChange={(event) => {
+                              updateSelections({
+                                ...selections,
+                                [group.key]: event.target.checked
+                              });
+                            }}
+                          />
+                          <span>{group.title}</span>
+                        </label>
+                      );
+                    }
+
+                    if (group.selectionMode === "multi") {
+                      const selected = new Set(asStringArray(currentValue));
+                      return (
+                        <fieldset key={group.id} className="rounded-md border border-slate-200 p-3">
+                          <legend className="px-1 text-sm font-medium text-slate-800">{group.title}</legend>
+                          {group.options.map((option) => (
+                            <label key={option.id} className="mt-1 block text-sm text-slate-700">
+                              <input
+                                type="checkbox"
+                                className="mr-2 h-4 w-4 rounded border-slate-300"
+                                checked={selected.has(option.versionItemId)}
+                                onChange={(event) => {
+                                  updateSelections({
+                                    ...selections,
+                                    [group.key]: nextMultiValue({
+                                      group,
+                                      currentValue,
+                                      optionVersionItemId: option.versionItemId,
+                                      checked: event.target.checked
+                                    })
+                                  });
+                                }}
+                              />
+                              {option.label}
+                            </label>
+                          ))}
+                        </fieldset>
+                      );
+                    }
+
+                    return (
+                      <label key={group.id} className="grid gap-1.5">
+                        <span className="text-sm font-medium text-slate-800">{group.title}</span>
+                        <input
+                          type="number"
+                          min={0}
+                          step={1}
+                          className="w-28 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm"
+                          value={asNumber(currentValue)}
+                          onChange={(event) => {
+                            updateSelections({
+                              ...selections,
+                              [group.key]: Math.max(0, Math.floor(Number(event.target.value) || 0))
+                            });
+                          }}
+                        />
+                      </label>
+                    );
+                  })}
+                </section>
+              ))}
+            </div>
+          ) : (
+            <p className="text-sm text-slate-700">No flow steps are configured for this model version.</p>
+          )}
+        </div>
       </div>
 
-      <div className="rounded-lg border border-slate-200 bg-white p-4">
-        <h2 className="text-lg font-semibold text-slate-900">Debug</h2>
-        <p className="mt-2 text-sm text-slate-700">
-          <strong>modelVersionId:</strong> {props.modelVersionId}
-        </p>
-        {props.showCopyModelVersionIdButton ? (
-          <button
-            type="button"
-            className="mt-2 rounded-md border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50"
-            onClick={() => {
-              void navigator.clipboard.writeText(props.modelVersionId);
-            }}
-          >
-            Copy MODEL_VERSION_ID
-          </button>
-        ) : null}
-        <p className="mt-2 text-sm text-slate-700">
-          <strong>selectionGroups:</strong> {sortedGroups.length}
-        </p>
-        <pre className="mt-2 overflow-x-auto rounded-md bg-slate-950 p-3 text-xs text-slate-100">
-          {JSON.stringify(colorByAreaKey, null, 2)}
-        </pre>
-      </div>
+      <aside className="grid gap-4">
+        <div className="rounded-lg border border-slate-200 bg-white p-3">
+          {dataUrl ? (
+            <img src={dataUrl} alt="Composite preview" className="w-full rounded border border-slate-200" />
+          ) : (
+            <p className="text-sm text-slate-700">No render view is configured for this model version.</p>
+          )}
 
-      <div className="rounded-lg border border-slate-200 bg-white p-4">
-        <h2 className="text-lg font-semibold text-slate-900">Selections</h2>
-        {sortedGroups.map((group) => {
-          const currentValue = selections[group.key];
+          <div className="mt-3 flex flex-wrap gap-2">
+            {props.data.renderViews.map((view) => (
+              <button
+                key={view.id}
+                type="button"
+                className={`rounded-md border px-2 py-1 text-xs ${
+                  activeRenderView?.id === view.id
+                    ? "border-slate-900 bg-slate-900 text-white"
+                    : "border-slate-300 bg-white text-slate-700"
+                }`}
+                onClick={() => setActiveRenderViewId(view.id)}
+              >
+                {view.title}
+              </button>
+            ))}
+          </div>
 
-          if (group.selectionMode === "single") {
-            return (
-              <label key={group.id} className="mb-3 mt-3 grid gap-1.5">
-                <span className="text-sm font-medium text-slate-800">{group.title}</span>
-                <select
-                  className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm outline-none ring-sky-500 focus:ring-2"
-                  value={asString(currentValue)}
-                  onChange={(event) => {
-                    updateSelections({
-                      ...selections,
-                      [group.key]: event.target.value
-                    });
-                  }}
-                >
-                  <option value="">Select</option>
-                  {group.options.map((option) => (
-                    <option key={option.id} value={option.versionItemId}>
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            );
-          }
+          {isRendering ? <p className="mt-2 text-xs text-slate-500">Rendering preview...</p> : null}
+          {renderError ? (
+            <p className="mt-2 rounded-md border border-rose-200 bg-rose-50 px-2 py-1 text-xs text-rose-900">{renderError}</p>
+          ) : null}
+        </div>
 
-          if (group.selectionMode === "boolean") {
-            return (
-              <label key={group.id} className="mb-3 mt-3 flex items-center gap-2 text-sm text-slate-800">
-                <input
-                  type="checkbox"
-                  className="h-4 w-4 rounded border-slate-300"
-                  checked={asBoolean(currentValue)}
-                  onChange={(event) => {
-                    updateSelections({
-                      ...selections,
-                      [group.key]: event.target.checked
-                    });
-                  }}
-                />
-                <span>{group.title}</span>
-              </label>
-            );
-          }
+        <div className="rounded-lg border border-slate-200 bg-white p-4">
+          <div className="flex items-center justify-between">
+            <h2 className="text-base font-semibold text-slate-900">Pricing</h2>
+            <div className="inline-flex rounded-md border border-slate-300 p-0.5 text-xs">
+              <button
+                type="button"
+                className={`rounded px-2 py-1 ${audience === "public" ? "bg-slate-900 text-white" : "text-slate-600"}`}
+                onClick={() => setAudience("public")}
+              >
+                Public
+              </button>
+              <button
+                type="button"
+                className={`rounded px-2 py-1 ${audience === "dealer" ? "bg-slate-900 text-white" : "text-slate-600"}`}
+                onClick={() => setAudience("dealer")}
+              >
+                Dealer
+              </button>
+            </div>
+          </div>
 
-          if (group.selectionMode === "multi") {
-            const selected = new Set(asStringArray(currentValue));
-            return (
-              <fieldset key={group.id} className="mb-3 mt-3 rounded-md border border-slate-200 p-3">
-                <legend className="px-1 text-sm font-medium text-slate-800">{group.title}</legend>
-                {group.options.map((option) => (
-                  <label key={option.id} className="mt-1 block text-sm text-slate-700">
-                    <input
-                      type="checkbox"
-                      className="mr-1 h-4 w-4 rounded border-slate-300"
-                      checked={selected.has(option.versionItemId)}
-                      onChange={(event) => {
-                        const nextSet = new Set(selected);
-                        if (event.target.checked) {
-                          nextSet.add(option.versionItemId);
-                        } else {
-                          nextSet.delete(option.versionItemId);
-                        }
+          <div className="mt-3 grid gap-1">
+            <p className="text-sm text-slate-700">
+              MSRP: <strong>{formatMoney(pricing.totals.msrp)}</strong>
+            </p>
+            <p className="text-sm text-slate-700">
+              Dealer: <strong>{formatMoney(pricing.totals.dealer)}</strong>
+            </p>
+          </div>
 
-                        updateSelections({
-                          ...selections,
-                          [group.key]: Array.from(nextSet)
-                        });
-                      }}
-                    />{" "}
-                    {option.label}
-                  </label>
-                ))}
-              </fieldset>
-            );
-          }
+          <div className="mt-4">
+            <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-500">Selected Items</h3>
+            <ul className="mt-2 grid gap-1">
+              {selectedItems.map((item: PricingLineItem) => (
+                <li key={item.key} className="rounded border border-slate-200 px-2 py-1 text-xs text-slate-700">
+                  <div className="flex items-center justify-between gap-2">
+                    <span>{item.label}</span>
+                    <span>x{item.qty}</span>
+                  </div>
+                </li>
+              ))}
+              {selectedItems.length === 0 ? <li className="text-xs text-slate-500">No selected add-ons.</li> : null}
+            </ul>
+          </div>
 
-          return (
-            <label key={group.id} className="mb-3 mt-3 grid gap-1.5">
-              <span className="text-sm font-medium text-slate-800">{group.title}</span>
-              <input
-                type="number"
-                className="w-28 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm outline-none ring-sky-500 focus:ring-2"
-                value={asNumber(currentValue)}
-                onChange={(event) => {
-                  updateSelections({
-                    ...selections,
-                    [group.key]: Number(event.target.value)
-                  });
-                }}
-              />
-            </label>
-          );
-        })}
+          <div className="mt-4">
+            <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-500">Included Items</h3>
+            <ul className="mt-2 grid gap-1">
+              {includedItems.map((item: PricingLineItem) => (
+                <li key={item.key} className="rounded border border-slate-200 bg-slate-50 px-2 py-1 text-xs text-slate-700">
+                  {item.label}
+                </li>
+              ))}
+              {includedItems.length === 0 ? <li className="text-xs text-slate-500">No included items configured.</li> : null}
+            </ul>
+          </div>
 
-        {isRendering ? <p className="text-sm text-slate-600">Rendering...</p> : null}
-        {error ? <p className="rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-900">Render error: {error}</p> : null}
-      </div>
+          {pricing.warnings.length > 0 ? (
+            <div className="mt-3 rounded-md border border-amber-200 bg-amber-50 p-2 text-xs text-amber-900">
+              {pricing.warnings[0]}
+            </div>
+          ) : null}
+        </div>
+
+        <div className="rounded-lg border border-slate-200 bg-white p-4 text-xs text-slate-700">
+          <p>
+            <strong>modelVersionId:</strong> {props.data.modelVersionId}
+          </p>
+          {props.showCopyModelVersionIdButton ? (
+            <button
+              type="button"
+              className="mt-2 rounded border border-slate-300 px-2 py-1"
+              onClick={() => {
+                void navigator.clipboard.writeText(props.data.modelVersionId);
+              }}
+            >
+              Copy MODEL_VERSION_ID
+            </button>
+          ) : null}
+        </div>
+      </aside>
     </section>
   );
 }
