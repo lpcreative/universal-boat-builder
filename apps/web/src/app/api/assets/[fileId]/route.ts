@@ -1,17 +1,39 @@
 import { NextResponse } from "next/server";
 
+export const runtime = "nodejs";
+
+interface RouteContext {
+  params: Promise<{ fileId?: string }>;
+}
+
 function readRequiredEnv(name: "DIRECTUS_API_URL" | "DIRECTUS_STATIC_TOKEN"): string {
   const value = process.env[name]?.trim();
   if (!value) {
-    throw new Error(`Missing required env var ${name}`);
+    throw new Error(`Missing required env var: ${name}`);
   }
   return value;
 }
 
-export async function GET(_: Request, context: { params: { fileId: string } }): Promise<Response> {
-  const fileId = context.params.fileId?.trim();
-  if (!fileId) {
-    return NextResponse.json({ error: "Missing file id" }, { status: 400 });
+function errorJson(status: number, code: string, message: string): Response {
+  return NextResponse.json(
+    {
+      error: code,
+      message
+    },
+    {
+      status,
+      headers: {
+        "Cache-Control": "no-store"
+      }
+    }
+  );
+}
+
+export async function GET(_request: Request, context: RouteContext): Promise<Response> {
+  const { fileId } = await context.params;
+  const normalizedFileId = typeof fileId === "string" ? fileId.trim() : "";
+  if (!normalizedFileId) {
+    return errorJson(400, "invalid_file_id", "Asset file id is required.");
   }
 
   let apiUrl: string;
@@ -20,37 +42,58 @@ export async function GET(_: Request, context: { params: { fileId: string } }): 
     apiUrl = readRequiredEnv("DIRECTUS_API_URL");
     staticToken = readRequiredEnv("DIRECTUS_STATIC_TOKEN");
   } catch (error) {
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Missing Directus configuration" },
-      { status: 500 }
-    );
+    const message = error instanceof Error ? error.message : "Missing Directus env vars";
+    return errorJson(500, "missing_env", message);
   }
 
-  const upstreamUrl = `${apiUrl.replace(/\/+$/, "")}/assets/${encodeURIComponent(fileId)}`;
-  const upstreamResponse = await fetch(upstreamUrl, {
-    headers: {
-      Authorization: `Bearer ${staticToken}`
-    },
-    cache: "force-cache"
-  });
+  const targetUrl = `${apiUrl.replace(/\/$/, "")}/assets/${encodeURIComponent(normalizedFileId)}`;
 
-  if (!upstreamResponse.ok) {
+  let upstream: Response;
+  try {
+    upstream = await fetch(targetUrl, {
+      method: "GET",
+      headers: {
+        Authorization: `Bearer ${staticToken}`
+      },
+      cache: "no-store"
+    });
+  } catch {
+    return errorJson(502, "directus_unreachable", "Failed to fetch asset from Directus.");
+  }
+
+  if (!upstream.ok) {
+    const status = upstream.status === 403 || upstream.status === 404 ? upstream.status : 500;
     const message =
-      upstreamResponse.status === 403
+      upstream.status === 403
         ? "Asset access forbidden. Check DIRECTUS_STATIC_TOKEN permissions for directus_files."
-        : `Asset fetch failed with status ${upstreamResponse.status}`;
-    return NextResponse.json({ error: message }, { status: upstreamResponse.status });
+        : upstream.status === 404
+          ? "Asset not found in Directus."
+          : `Directus asset request failed with status ${upstream.status}.`;
+
+    return errorJson(status, "asset_fetch_failed", message);
   }
 
-  const contentType = upstreamResponse.headers.get("content-type") ?? "application/octet-stream";
-  const cacheControl = upstreamResponse.headers.get("cache-control") ?? "public, max-age=86400";
-  const body = await upstreamResponse.arrayBuffer();
+  if (!upstream.body) {
+    return errorJson(500, "empty_asset_response", "Directus returned an empty asset response body.");
+  }
 
-  return new Response(body, {
+  const headers = new Headers();
+  const contentType = upstream.headers.get("content-type");
+  if (contentType) {
+    headers.set("Content-Type", contentType);
+  }
+  const contentLength = upstream.headers.get("content-length");
+  if (contentLength) {
+    headers.set("Content-Length", contentLength);
+  }
+  const etag = upstream.headers.get("etag");
+  if (etag) {
+    headers.set("ETag", etag);
+  }
+  headers.set("Cache-Control", "no-store");
+
+  return new Response(upstream.body, {
     status: 200,
-    headers: {
-      "content-type": contentType,
-      "cache-control": cacheControl
-    }
+    headers
   });
 }

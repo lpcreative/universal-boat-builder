@@ -1,3 +1,5 @@
+import type { ModelVersionBundle } from "@ubb/cms-adapter-directus";
+
 export type SelectionValue = string | string[] | boolean | number | null;
 export type SelectionState = Record<string, SelectionValue>;
 
@@ -13,9 +15,36 @@ export interface ConfigSelectionGroupView {
   key: string;
   title: string;
   selectionMode: "single" | "multi" | "boolean" | "quantity";
+  flowId: string;
+  flowTitle: string;
+  flowSort: number | null;
+  stepId: string;
+  stepKey: string;
+  stepTitle: string;
+  stepSort: number | null;
+  sectionId: string;
+  sectionTitle: string;
+  sectionSort: number | null;
+  minSelect: number | null;
+  maxSelect: number | null;
+  isRequired: boolean;
+  helpText: string | null;
   sort: number | null;
   options: ConfigOptionView[];
 }
+
+export type ClientColorSelectionBundle = Pick<
+  ModelVersionBundle,
+  "selection_groups" | "group_options" | "version_items" | "color_palette_items"
+>;
+
+export interface ClientRenderConfig {
+  renderViews: ModelVersionBundle["render_views"];
+  renderLayers: ModelVersionBundle["render_layers"];
+  colorSelectionBundle: ClientColorSelectionBundle;
+}
+
+export type ClientPricingBundle = ModelVersionBundle;
 
 export function bySortThenId<T extends { sort?: number | null; id: string }>(a: T, b: T): number {
   const aSort = a.sort ?? Number.MAX_SAFE_INTEGER;

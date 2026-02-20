@@ -1,5 +1,5 @@
 import { readItems } from "@directus/sdk";
-import { directusClient } from "./directus-client.js";
+import { getDirectusClient } from "./directus-client.js";
 import type {
   BoatModelRecord,
   ColorAreaRecord,
@@ -151,7 +151,7 @@ function toVersionLabel(year: number | null, trim: string | null, fallback: stri
 }
 
 async function readMany(collection: string, query: RawRecord): Promise<RawRecord[]> {
-  return (await directusClient.request(readItems(collection as never, query as never) as never)) as RawRecord[];
+  return (await getDirectusClient().request(readItems(collection as never, query as never) as never)) as RawRecord[];
 }
 
 function toVersionRevisionRecord(row: RawRecord): VersionRevisionRecord | null {
@@ -279,7 +279,8 @@ function pickCurrentRevision(
 export async function getPublishedModels(): Promise<PublishedModel[]> {
   const versionRows = await readMany("model_versions", {
     filter: {
-      status: { _eq: "published" }
+      status: { _eq: "published" },
+      published_revision: { _nnull: true }
     },
     fields: ["id", "boat_model", "year", "trim", "notes", "published_revision", "sort", "status"],
     sort: ["sort", "id"]
@@ -296,20 +297,21 @@ export async function getPublishedModels(): Promise<PublishedModel[]> {
   const revisionRows = publishedRevisionIds.length
     ? await readMany("version_revisions", {
         filter: {
-          id: { _in: publishedRevisionIds }
+          id: { _in: publishedRevisionIds },
+          status: { _eq: "published" }
         },
         fields: ["id", "effective_date", "status", "sort", "revision_number", "model_version"],
         sort: ["sort", "id"]
       })
     : [];
 
-  const revisionEffectiveDateById = new Map<string, string | null>();
+  const revisionById = new Map<string, RawRecord>();
   for (const row of revisionRows) {
     const id = asString(row.id);
     if (!id) {
       continue;
     }
-    revisionEffectiveDateById.set(id, asString(row.effective_date));
+    revisionById.set(id, row);
   }
 
   const versionsByModelId = new Map<string, PublishedModelVersionRecord[]>();
@@ -320,7 +322,21 @@ export async function getPublishedModels(): Promise<PublishedModel[]> {
     }
 
     const publishedRevisionId = asString(row.published_revision);
-    const publishedAt = publishedRevisionId ? (revisionEffectiveDateById.get(publishedRevisionId) ?? null) : null;
+    if (!publishedRevisionId) {
+      continue;
+    }
+
+    const publishedRevision = revisionById.get(publishedRevisionId);
+    if (!publishedRevision) {
+      continue;
+    }
+
+    const publishedRevisionModelVersionId = asString(publishedRevision.model_version);
+    if (publishedRevisionModelVersionId !== asString(row.id)) {
+      continue;
+    }
+
+    const publishedAt = asString(publishedRevision.effective_date);
     const version = toPublishedModelVersionRecord(row, publishedAt);
     if (!version) {
       continue;
@@ -395,7 +411,8 @@ export async function getModelVersionBundle(modelVersionId: string): Promise<Mod
   const versionRows = await readMany("model_versions", {
     filter: {
       id: { _eq: modelVersionId },
-      status: { _eq: "published" }
+      status: { _eq: "published" },
+      published_revision: { _nnull: true }
     },
     limit: 1,
     fields: ["id", "boat_model", "year", "trim", "notes", "published_revision", "sort", "status"]
@@ -420,10 +437,15 @@ export async function getModelVersionBundle(modelVersionId: string): Promise<Mod
     status: asStatus(versionRow.status)
   };
 
+  const publishedRevisionId = versionRecord.published_revision;
   const revisionRows = await readMany("version_revisions", {
-    filter: {
-      model_version: { _eq: versionId }
-    },
+    filter: publishedRevisionId
+      ? {
+          _or: [{ model_version: { _eq: versionId } }, { id: { _eq: publishedRevisionId } }]
+        }
+      : {
+          model_version: { _eq: versionId }
+        },
     fields: [
       "id",
       "model_version",
@@ -441,7 +463,14 @@ export async function getModelVersionBundle(modelVersionId: string): Promise<Mod
     .filter((revision): revision is VersionRevisionRecord => Boolean(revision));
   versionRevisions.sort(byRevisionPriority);
 
-  const currentRevision = pickCurrentRevision(versionRecord, versionRevisions);
+  // Snapshot relation path:
+  // model_versions.published_revision -> version_revisions.id -> render_views.revision -> render_layers.render_view
+  const currentRevision =
+    (publishedRevisionId
+      ? versionRevisions.find(
+          (revision) => revision.id === publishedRevisionId && revision.model_version === versionId
+        ) ?? null
+      : null) ?? pickCurrentRevision(versionRecord, versionRevisions);
   const currentRevisionId = currentRevision?.id ?? null;
 
   const versionItemRows = currentRevisionId
@@ -829,12 +858,12 @@ export async function getModelVersionBundle(modelVersionId: string): Promise<Mod
   for (const row of renderViewRows) {
     const id = asString(row.id);
     const revision = asString(row.revision);
-    const key = asString(row.key);
-    const title = asString(row.title);
-    if (!id || !revision || !key || !title) {
+    if (!id || !revision) {
       continue;
     }
 
+    const key = asString(row.key) ?? "";
+    const title = asString(row.title) ?? id;
     renderViewIds.push(id);
     renderViews.push({
       id,
@@ -875,12 +904,12 @@ export async function getModelVersionBundle(modelVersionId: string): Promise<Mod
   for (const row of renderLayerRows) {
     const id = asString(row.id);
     const renderView = asRelationId(row.render_view);
-    const key = asString(row.key);
     const asset = asRelationId(row.asset);
-    if (!id || !renderView || !key || !asset) {
+    if (!id || !renderView || !asset) {
       continue;
     }
 
+    const key = asString(row.key) ?? id;
     const maskAsset = asRelationId(row.mask_asset);
     const colorAreaRow = asRawRecord(row.color_area);
 

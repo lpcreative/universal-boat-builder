@@ -1,8 +1,7 @@
 import "server-only";
 
 import { getModelVersionBundle, getPublishedModels } from "@ubb/cms-adapter-directus";
-import { buildColorByAreaKey, render_view_to_data_url } from "@ubb/compiler";
-import { createDirectusAssetUrlResolver } from "@ubb/engine";
+import { buildColorByAreaKey } from "@ubb/compiler";
 import type {
   ColorPaletteItemRecord,
   GroupOptionRecord,
@@ -10,7 +9,14 @@ import type {
   SelectionGroupRecord,
   VersionItemRecord
 } from "@ubb/cms-adapter-directus";
-import { bySortThenId, type ConfigOptionView, type ConfigSelectionGroupView, type SelectionState } from "../configurator-shared";
+import {
+  bySortThenId,
+  type ClientPricingBundle,
+  type ClientRenderConfig,
+  type ConfigOptionView,
+  type ConfigSelectionGroupView,
+  type SelectionState
+} from "../configurator-shared";
 
 export interface PublishedModelVersionChoice {
   modelName: string;
@@ -22,9 +28,9 @@ export interface InitialConfiguratorData {
   modelVersionId: string;
   selectionGroups: ConfigSelectionGroupView[];
   selections: SelectionState;
-  initialDataUrl: string | null;
   colorByAreaKey: Record<string, string>;
-  hasRenderView: boolean;
+  renderConfig: ClientRenderConfig;
+  pricingBundle: ClientPricingBundle;
 }
 
 function readModelVersionIdFromEnv(): string | null {
@@ -237,18 +243,41 @@ function toGroupsView(bundle: ModelVersionBundle): ConfigSelectionGroupView[] {
   const sortedGroups = [...bundle.selection_groups].sort(bySortThenId);
   const versionItemsById = createVersionItemMap(bundle);
   const groupOptionsByGroupId = createGroupOptionsMap(bundle);
+  const sectionsById = new Map(bundle.flow_sections.map((section) => [section.id, section]));
+  const stepsById = new Map(bundle.flow_steps.map((step) => [step.id, step]));
+  const flowsById = new Map(bundle.flows.map((flow) => [flow.id, flow]));
 
-  return sortedGroups.map((group) => ({
-    id: group.id,
-    key: selectionStateKey(group),
-    title: group.title,
-    selectionMode: group.selection_mode,
-    sort: group.sort ?? null,
-    options: toOptions({
-      groupOptions: groupOptionsByGroupId.get(group.id) ?? [],
-      versionItemsById
-    })
-  }));
+  return sortedGroups.map((group) => {
+    const section = sectionsById.get(group.section);
+    const step = section ? stepsById.get(section.step) : undefined;
+    const flow = step ? flowsById.get(step.flow) : undefined;
+
+    return {
+      id: group.id,
+      key: selectionStateKey(group),
+      title: group.title,
+      selectionMode: group.selection_mode,
+      flowId: flow?.id ?? "unknown-flow",
+      flowTitle: flow?.title ?? "Configuration",
+      flowSort: flow?.sort ?? null,
+      stepId: step?.id ?? "unknown-step",
+      stepKey: step?.key ?? "general",
+      stepTitle: step?.title ?? "General",
+      stepSort: step?.sort ?? null,
+      sectionId: section?.id ?? "unknown-section",
+      sectionTitle: section?.title ?? "Options",
+      sectionSort: section?.sort ?? null,
+      minSelect: group.min_select ?? null,
+      maxSelect: group.max_select ?? null,
+      isRequired: group.is_required === true,
+      helpText: group.help_text ?? null,
+      sort: group.sort ?? null,
+      options: toOptions({
+        groupOptions: groupOptionsByGroupId.get(group.id) ?? [],
+        versionItemsById
+      })
+    };
+  });
 }
 
 export async function listPublishedModelVersionChoices(): Promise<PublishedModelVersionChoice[]> {
@@ -261,13 +290,28 @@ export async function listPublishedModelVersionChoices(): Promise<PublishedModel
     }))
   );
 
+  const directusApiHost = (() => {
+    const apiUrl = process.env.DIRECTUS_API_URL;
+    if (!apiUrl) {
+      return "unset";
+    }
+    try {
+      return new URL(apiUrl).host;
+    } catch {
+      return "invalid-url";
+    }
+  })();
+
   if (process.env.NODE_ENV !== "production") {
     console.info(
-      `[configurator] discovery models=${models.length} versions=${choices.length} firstVersion=${
+      `[configurator] published discovery: host=${directusApiHost} models=${models.length} versions=${choices.length} firstPublishedModelVersionId=${
         choices[0]?.modelVersionId ?? "none"
-      }`
+      } env(DIRECTUS_API_URL=${Boolean(process.env.DIRECTUS_API_URL)},DIRECTUS_STATIC_TOKEN=${Boolean(
+        process.env.DIRECTUS_STATIC_TOKEN
+      )})`
     );
   }
+
   return choices;
 }
 
@@ -275,8 +319,7 @@ export async function pickModelVersion(args: {
   selectedModelVersionId: string | null;
 }): Promise<{
   modelVersionId: string | null;
-  source: "env" | "single" | "selected" | "first" | "invalid_selected" | "none";
-  reason: string;
+  source: "env" | "single" | "selected" | "first" | "none";
   choices: PublishedModelVersionChoice[];
 }> {
   const envModelVersionId = readModelVersionIdFromEnv();
@@ -286,7 +329,6 @@ export async function pickModelVersion(args: {
     return {
       modelVersionId: envModelVersionId,
       source: "env",
-      reason: "env_model_version_id",
       choices
     };
   }
@@ -295,24 +337,6 @@ export async function pickModelVersion(args: {
     return {
       modelVersionId: null,
       source: "none",
-      reason: "no_published_versions_discovered",
-      choices
-    };
-  }
-
-  if (args.selectedModelVersionId) {
-    if (choices.some((choice) => choice.modelVersionId === args.selectedModelVersionId)) {
-      return {
-        modelVersionId: args.selectedModelVersionId,
-        source: "selected",
-        reason: "query_selected_model_version",
-        choices
-      };
-    }
-    return {
-      modelVersionId: null,
-      source: "invalid_selected",
-      reason: "query_selected_model_version_not_found",
       choices
     };
   }
@@ -321,7 +345,14 @@ export async function pickModelVersion(args: {
     return {
       modelVersionId: choices[0].modelVersionId,
       source: "single",
-      reason: "single_published_version",
+      choices
+    };
+  }
+
+  if (args.selectedModelVersionId && choices.some((choice) => choice.modelVersionId === args.selectedModelVersionId)) {
+    return {
+      modelVersionId: args.selectedModelVersionId,
+      source: "selected",
       choices
     };
   }
@@ -329,7 +360,6 @@ export async function pickModelVersion(args: {
   return {
     modelVersionId: choices[0]?.modelVersionId ?? null,
     source: "first",
-    reason: "default_first_published_version",
     choices
   };
 }
@@ -341,25 +371,25 @@ export async function createInitialConfiguratorData(args: {
   if (!bundle) {
     throw new Error(`No published model version bundle found for "${args.modelVersionId}".`);
   }
+
   const selections = createDeterministicSelections(bundle);
   const colorByAreaKey = buildColorByAreaKey(bundle, selections);
-
-  const initialDataUrl = bundle.render_views[0]
-    ? await render_view_to_data_url({
-        view: bundle.render_views[0],
-        layers: bundle.render_layers,
-        selections,
-        colorByAreaKey,
-        fileUrlForId: createDirectusAssetUrlResolver()
-      })
-    : null;
 
   return {
     modelVersionId: bundle.id,
     selectionGroups: toGroupsView(bundle),
     selections,
-    initialDataUrl,
     colorByAreaKey,
-    hasRenderView: bundle.render_views.length > 0
+    renderConfig: {
+      renderViews: bundle.render_views,
+      renderLayers: bundle.render_layers,
+      colorSelectionBundle: {
+        selection_groups: bundle.selection_groups,
+        group_options: bundle.group_options,
+        version_items: bundle.version_items,
+        color_palette_items: bundle.color_palette_items
+      }
+    },
+    pricingBundle: bundle
   };
 }

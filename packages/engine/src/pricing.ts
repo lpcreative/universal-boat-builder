@@ -312,25 +312,42 @@ export function computePricing(
   const includedLineItems: PricingLineItem[] = [...bundle.version_items]
     .filter((item) => item.is_included === true)
     .sort(bySortThenId)
-    .map((item): PricingLineItem => ({
-      key: `included:${item.id}`,
-      label: makeLineItemLabel(item),
-      qty: 1,
-      isIncluded: true,
-      source: "included",
-      msrp: 0,
-      dealer: 0,
-      vendorCode: item.item_detail?.vendor_code ?? null,
-      internalCode: item.item_detail?.internal_code ?? null,
-      notes: item.notes ?? null,
-      category: item.item_detail?.item_category ?? null
-    }));
+    .map((item): PricingLineItem => {
+      if (selectedIncludedIds.has(item.id)) {
+        warnings.push(`included version_item "${item.id}" is also selected; reporting it once as included`);
+      }
 
-  if (selectedIncludedIds.size > 0) {
-    warnings.push("included items selected explicitly; included lines are reported once.");
-  }
+      return {
+        key: `included:${item.id}`,
+        label: makeLineItemLabel(item),
+        qty: 1,
+        isIncluded: true,
+        source: "included",
+        msrp: 0,
+        dealer: 0,
+        vendorCode: item.item_detail?.vendor_code ?? null,
+        internalCode: item.item_detail?.internal_code ?? null,
+        notes: item.notes ?? null,
+        category: item.item_detail?.item_category ?? null
+      };
+    });
 
   const combined = [...lineItems, ...includedLineItems];
+  combined.sort((a, b) => {
+    const categoryA = a.category ?? "";
+    const categoryB = b.category ?? "";
+    if (categoryA !== categoryB) {
+      return categoryA.localeCompare(categoryB);
+    }
+    if (a.label !== b.label) {
+      return a.label.localeCompare(b.label);
+    }
+    if (a.key !== b.key) {
+      return a.key.localeCompare(b.key);
+    }
+    return 0;
+  });
+
   const totals = combined.reduce(
     (acc, item) => {
       if (!item.isIncluded && typeof item.msrp === "number" && Number.isFinite(item.msrp)) {
@@ -343,6 +360,19 @@ export function computePricing(
     },
     { msrp: 0, dealer: 0 }
   );
+
+  const hasPricedSelections = selectedRows.some((row) => {
+    const versionItem = versionItemsById.get(row.versionItemId);
+    if (!versionItem) {
+      return false;
+    }
+    const msrp = row.groupOption?.override_msrp ?? versionItem.msrp ?? 0;
+    const dealer = row.groupOption?.override_dealer_price ?? versionItem.dealer_price ?? 0;
+    return msrp > 0 || dealer > 0;
+  });
+  if (hasPricedSelections && totals.msrp <= 0 && totals.dealer <= 0) {
+    warnings.push("priced selections detected but computed totals are zero; check pricing mapping.");
+  }
 
   return {
     lineItems: combined,

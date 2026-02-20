@@ -3,31 +3,10 @@ import { ConfiguratorClient } from "../../components/configurator-client";
 import { createInitialConfiguratorData, pickModelVersion } from "../../lib/server/configurator-data";
 import { checkRequiredDirectusEnv } from "../../lib/server/directus-env";
 
+export const runtime = "nodejs";
+
 interface ConfiguratorPageProps {
   searchParams?: Record<string, string | string[] | undefined>;
-}
-
-function readSingleParam(value: string | string[] | undefined): string | null {
-  if (typeof value !== "string") {
-    return null;
-  }
-  const trimmed = value.trim();
-  return trimmed.length > 0 ? trimmed : null;
-}
-
-function logConfiguratorDiagnostics(args: {
-  discoveredModelsCount: number;
-  discoveredVersionsCount: number;
-  selectedModelVersionId: string | null;
-  reason: string;
-}): void {
-  if (process.env.NODE_ENV === "production") {
-    return;
-  }
-
-  console.info(
-    `[configurator] page models=${args.discoveredModelsCount} versions=${args.discoveredVersionsCount} selected=${args.selectedModelVersionId ?? "none"} reason=${args.reason}`
-  );
 }
 
 function modelVersionSelector(args: {
@@ -36,12 +15,12 @@ function modelVersionSelector(args: {
 }): JSX.Element {
   return (
     <form action="/configurator" method="GET" className="grid max-w-xl gap-2 rounded-lg border border-slate-200 bg-white p-4">
-      <label htmlFor="mv" className="text-sm font-medium text-slate-700">
+      <label htmlFor="modelVersionId" className="text-sm font-medium text-slate-700">
         Select model version
       </label>
       <select
-        id="mv"
-        name="mv"
+        id="modelVersionId"
+        name="modelVersionId"
         defaultValue={args.currentModelVersionId ?? ""}
         className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm outline-none ring-sky-500 focus:ring-2"
       >
@@ -87,23 +66,15 @@ MODEL_VERSION_ID=`}
     );
   }
 
-  const selectedModelVersionId =
-    readSingleParam(props.searchParams?.mv) ?? readSingleParam(props.searchParams?.modelVersionId);
+  const rawModelVersionId = props.searchParams?.modelVersionId;
+  const selectedModelVersionId = typeof rawModelVersionId === "string" ? rawModelVersionId : null;
   const selection = await pickModelVersion({ selectedModelVersionId });
-  const discoveredVersionsCount = selection.choices.length;
-  const discoveredModelsCount = new Set(selection.choices.map((choice) => choice.modelName)).size;
 
   if (selection.choices.length === 0 && !selection.modelVersionId) {
-    logConfiguratorDiagnostics({
-      discoveredModelsCount,
-      discoveredVersionsCount,
-      selectedModelVersionId: null,
-      reason: "empty_state_no_published_model_versions"
-    });
     return (
       <main className="mx-auto grid w-full max-w-4xl gap-4 px-4 py-8 md:px-6">
         <h1 className="text-2xl font-semibold tracking-tight text-slate-900">Configurator</h1>
-        <p className="text-sm text-slate-700">No published model versions found. Publish a model_version in Directus.</p>
+        <p className="text-sm text-slate-700">No published model versions yet. Publish a model_version in Directus.</p>
         <p>
           <Link className="text-sm font-medium text-sky-700 hover:text-sky-600" href="/">
             Back to home
@@ -113,35 +84,7 @@ MODEL_VERSION_ID=`}
     );
   }
 
-  if (selection.source === "invalid_selected" && selectedModelVersionId) {
-    logConfiguratorDiagnostics({
-      discoveredModelsCount,
-      discoveredVersionsCount,
-      selectedModelVersionId,
-      reason: "empty_state_requested_model_version_not_found"
-    });
-    return (
-      <main className="mx-auto grid w-full max-w-4xl gap-4 px-4 py-8 md:px-6">
-        <h1 className="text-2xl font-semibold tracking-tight text-slate-900">Configurator</h1>
-        <p className="text-sm text-slate-700">This link targets a model version that was not found.</p>
-        <p className="text-sm text-slate-700">
-          Requested <code>mv</code>: <code>{selectedModelVersionId}</code>
-        </p>
-        {modelVersionSelector({
-          choices: selection.choices,
-          currentModelVersionId: null
-        })}
-      </main>
-    );
-  }
-
   if (!selection.modelVersionId) {
-    logConfiguratorDiagnostics({
-      discoveredModelsCount,
-      discoveredVersionsCount,
-      selectedModelVersionId,
-      reason: "empty_state_no_selected_model_version"
-    });
     return (
       <main className="mx-auto grid w-full max-w-4xl gap-4 px-4 py-8 md:px-6">
         <h1 className="text-2xl font-semibold tracking-tight text-slate-900">Configurator</h1>
@@ -155,16 +98,14 @@ MODEL_VERSION_ID=`}
   }
 
   try {
-    const data = await createInitialConfiguratorData({ modelVersionId: selection.modelVersionId });
-    logConfiguratorDiagnostics({
-      discoveredModelsCount,
-      discoveredVersionsCount,
-      selectedModelVersionId: data.modelVersionId,
-      reason: `loaded_${selection.reason}`
+    const data = await createInitialConfiguratorData({
+      modelVersionId: selection.modelVersionId
     });
+    const selectedChoice = selection.choices.find((choice) => choice.modelVersionId === data.modelVersionId);
+    const modelLabel = selectedChoice?.label ?? `Model Version ${data.modelVersionId}`;
 
     return (
-      <main className="mx-auto grid w-full max-w-5xl gap-4 px-4 py-8 md:px-6">
+      <main className="mx-auto grid w-full max-w-7xl gap-4 px-4 py-8 md:px-6">
         <h1 className="text-2xl font-semibold tracking-tight text-slate-900">Configurator</h1>
         {selection.choices.length > 1 && selection.source !== "env"
           ? modelVersionSelector({
@@ -181,23 +122,18 @@ MODEL_VERSION_ID=`}
 
         <ConfiguratorClient
           modelVersionId={data.modelVersionId}
+          modelLabel={modelLabel}
           showCopyModelVersionIdButton={selection.choices.length > 1}
           selectionGroups={data.selectionGroups}
           initialSelections={data.selections}
-          initialDataUrl={data.initialDataUrl}
           initialColorByAreaKey={data.colorByAreaKey}
-          hasRenderView={data.hasRenderView}
+          renderConfig={data.renderConfig}
+          pricingBundle={data.pricingBundle}
         />
       </main>
     );
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown error";
-    logConfiguratorDiagnostics({
-      discoveredModelsCount,
-      discoveredVersionsCount,
-      selectedModelVersionId,
-      reason: "empty_state_failed_to_create_configurator_session"
-    });
 
     return (
       <main className="mx-auto grid w-full max-w-4xl gap-4 px-4 py-8 md:px-6">

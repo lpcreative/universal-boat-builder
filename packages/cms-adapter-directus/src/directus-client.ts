@@ -23,9 +23,21 @@ function readRequiredEnv(name: "DIRECTUS_API_URL" | "DIRECTUS_STATIC_TOKEN"): st
   return value;
 }
 
-const directusApiUrl = readRequiredEnv("DIRECTUS_API_URL");
-const directusStaticToken = readRequiredEnv("DIRECTUS_STATIC_TOKEN");
+function createConfiguredClient() {
+  const directusApiUrl = readRequiredEnv("DIRECTUS_API_URL");
+  const directusStaticToken = readRequiredEnv("DIRECTUS_STATIC_TOKEN");
 
-export const directusClient = createDirectus<DirectusSchema>(directusApiUrl)
-  .with(rest())
-  .with(staticToken(directusStaticToken));
+  return createDirectus<DirectusSchema>(directusApiUrl)
+    .with(rest())
+    .with(staticToken(directusStaticToken));
+}
+
+let cachedClient: ReturnType<typeof createConfiguredClient> | null = null;
+
+export function getDirectusClient(): ReturnType<typeof createConfiguredClient> {
+  if (cachedClient) {
+    return cachedClient;
+  }
+  cachedClient = createConfiguredClient();
+  return cachedClient;
+}
