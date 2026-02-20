@@ -1,6 +1,8 @@
 import { createDirectus, rest, staticToken } from "@directus/sdk";
 import type { DirectusSchema } from "./directus-schema.js";
 
+type ProcessLike = { env?: Record<string, string | undefined> };
+
 function assertServerOnly(): void {
   if (typeof window !== "undefined") {
     throw new Error(
@@ -10,9 +12,11 @@ function assertServerOnly(): void {
 }
 
 // Keep this module server-side only. It relies on a privileged static token.
-function readRequiredEnv(name: "DIRECTUS_API_URL" | "DIRECTUS_STATIC_TOKEN"): string {
+function readRequiredEnv(
+  processLike: ProcessLike | undefined,
+  name: "DIRECTUS_API_URL" | "DIRECTUS_STATIC_TOKEN"
+): string {
   assertServerOnly();
-  const processLike = (globalThis as { process?: { env?: Record<string, string | undefined> } }).process;
   const value = processLike?.env?.[name];
   if (!value) {
     throw new Error(
@@ -23,9 +27,52 @@ function readRequiredEnv(name: "DIRECTUS_API_URL" | "DIRECTUS_STATIC_TOKEN"): st
   return value;
 }
 
-const directusApiUrl = readRequiredEnv("DIRECTUS_API_URL");
-const directusStaticToken = readRequiredEnv("DIRECTUS_STATIC_TOKEN");
+export interface DirectusClientConfig {
+  apiUrl: string;
+  token: string;
+}
 
-export const directusClient = createDirectus<DirectusSchema>(directusApiUrl)
-  .with(rest())
-  .with(staticToken(directusStaticToken));
+type DirectusClient = ReturnType<typeof createDirectusClient>;
+
+let cachedDirectusClientFromEnv: DirectusClient | null = null;
+
+function assertConfigValue(name: "apiUrl" | "token", value: unknown): string {
+  if (typeof value !== "string" || value.length === 0) {
+    throw new Error(`[@ubb/cms-adapter-directus] Missing required Directus config value "${name}".`);
+  }
+  return value;
+}
+
+export function createDirectusClient(config: DirectusClientConfig) {
+  assertServerOnly();
+
+  return createDirectus<DirectusSchema>(assertConfigValue("apiUrl", config.apiUrl))
+    .with(rest())
+    .with(staticToken(assertConfigValue("token", config.token)));
+}
+
+export function createDirectusClientFromEnv(processLike?: ProcessLike) {
+  const runtimeProcess =
+    processLike ?? (globalThis as { process?: ProcessLike }).process;
+  const apiUrl = readRequiredEnv(runtimeProcess, "DIRECTUS_API_URL");
+  const token = readRequiredEnv(runtimeProcess, "DIRECTUS_STATIC_TOKEN");
+  return createDirectusClient({ apiUrl, token });
+}
+
+function getCachedDirectusClientFromEnv(): DirectusClient {
+  if (!cachedDirectusClientFromEnv) {
+    cachedDirectusClientFromEnv = createDirectusClientFromEnv();
+  }
+  return cachedDirectusClientFromEnv;
+}
+
+export const directusClient: DirectusClient = new Proxy({} as DirectusClient, {
+  get(_target, prop, receiver) {
+    const client = getCachedDirectusClientFromEnv();
+    const value = Reflect.get(client, prop, receiver);
+    if (typeof value === "function") {
+      return value.bind(client);
+    }
+    return value;
+  }
+});
