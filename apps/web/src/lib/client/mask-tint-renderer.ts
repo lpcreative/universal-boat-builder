@@ -30,18 +30,12 @@ function readString(value: unknown): string | null {
   return typeof value === "string" && value.length > 0 ? value : null;
 }
 
-function directusAssetUrl(args: { assetBaseUrl: string; fileId: string; assetToken: string | null }): string {
-  const fileId = args.fileId.trim();
+function proxiedAssetUrl(fileIdInput: string): string {
+  const fileId = fileIdInput.trim();
   if (fileId.length === 0) {
     throw new Error("Render layer has an empty file id. Check render_layers.asset/mask_asset.");
   }
-
-  const base = args.assetBaseUrl.replace(/\/$/, "");
-  const url = new URL(`${base}/assets/${encodeURIComponent(fileId)}`);
-  if (args.assetToken && args.assetToken.length > 0) {
-    url.searchParams.set("access_token", args.assetToken);
-  }
-  return url.toString();
+  return `/api/assets/${encodeURIComponent(fileId)}`;
 }
 
 function pickFromObject(value: SelectionObject, keys: string[]): string | null {
@@ -284,7 +278,7 @@ async function fetchImageBlob(url: string): Promise<Blob> {
   try {
     response = await fetch(url, { method: "GET" });
   } catch {
-    throw new Error(`Failed to fetch render asset ${url}. Check Directus CORS and connectivity.`);
+    throw new Error(`Failed to fetch render asset ${url}. Check web server and Directus connectivity.`);
   }
 
   if (!response.ok) {
@@ -353,9 +347,8 @@ function resolveMaskAssetForTint(
 export async function renderFirstViewToDataUrl(args: {
   renderViews: RenderViewRecord[];
   renderLayers: RenderLayerRecord[];
-  assetBaseUrl: string;
-  assetToken: string | null;
   colorByAreaKey: Record<string, string>;
+  logger: Logger;
 }): Promise<string | null> {
   if (typeof window === "undefined" || typeof document === "undefined") {
     throw new Error("renderFirstViewToDataUrl requires a browser runtime");
@@ -364,6 +357,9 @@ export async function renderFirstViewToDataUrl(args: {
   const firstView = [...args.renderViews].sort(bySortThenId)[0] ?? null;
   if (!firstView) {
     return null;
+  }
+  if (!readString(firstView.key)) {
+    args.logger(`render view "${firstView.id}" is missing key; using id/sort fallback selection.`);
   }
 
   const sortedLayers = args.renderLayers
@@ -376,15 +372,11 @@ export async function renderFirstViewToDataUrl(args: {
   const firstImageLayer = imageLayers[0] ?? null;
 
   if (!firstImageLayer?.asset) {
-    throw new Error(`render view "${firstView.key}" has no base image layer`);
+    throw new Error(`render view "${firstView.key || firstView.id}" has no base image layer`);
   }
 
   const baseImage = await loadImage(
-    directusAssetUrl({
-      assetBaseUrl: args.assetBaseUrl,
-      fileId: firstImageLayer.asset,
-      assetToken: args.assetToken
-    })
+    proxiedAssetUrl(firstImageLayer.asset)
   );
   const canvas = createCanvas(baseImage.naturalWidth || baseImage.width, baseImage.naturalHeight || baseImage.height);
   const context = getContext2d(canvas);
@@ -393,11 +385,7 @@ export async function renderFirstViewToDataUrl(args: {
 
   for (const layer of imageLayers) {
     const image = await loadImage(
-      directusAssetUrl({
-        assetBaseUrl: args.assetBaseUrl,
-        fileId: layer.asset,
-        assetToken: args.assetToken
-      })
+      proxiedAssetUrl(layer.asset)
     );
     context.save();
     context.globalCompositeOperation = normalizeBlendMode(layer.blend_mode);
@@ -419,11 +407,7 @@ export async function renderFirstViewToDataUrl(args: {
     }
 
     const maskImage = await loadImage(
-      directusAssetUrl({
-        assetBaseUrl: args.assetBaseUrl,
-        fileId: maskAsset,
-        assetToken: args.assetToken
-      })
+      proxiedAssetUrl(maskAsset)
     );
     const offscreen = createCanvas(canvas.width, canvas.height);
     const offscreenContext = getContext2d(offscreen);
@@ -444,11 +428,7 @@ export async function renderFirstViewToDataUrl(args: {
 
   for (const layer of decalLayers) {
     const image = await loadImage(
-      directusAssetUrl({
-        assetBaseUrl: args.assetBaseUrl,
-        fileId: layer.asset,
-        assetToken: args.assetToken
-      })
+      proxiedAssetUrl(layer.asset)
     );
     context.save();
     context.globalCompositeOperation = "source-over";
@@ -473,9 +453,8 @@ export async function renderMaskTintPreview(args: {
   const dataUrl = await renderFirstViewToDataUrl({
     renderViews: args.renderConfig.renderViews,
     renderLayers: args.renderConfig.renderLayers,
-    assetBaseUrl: args.renderConfig.assetBaseUrl,
-    assetToken: args.renderConfig.assetToken,
-    colorByAreaKey
+    colorByAreaKey,
+    logger: (message: string) => warnings.push(message)
   });
 
   return {

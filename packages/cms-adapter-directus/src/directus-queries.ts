@@ -858,12 +858,12 @@ export async function getModelVersionBundle(modelVersionId: string): Promise<Mod
   for (const row of renderViewRows) {
     const id = asString(row.id);
     const revision = asString(row.revision);
-    const key = asString(row.key);
-    const title = asString(row.title);
-    if (!id || !revision || !key || !title) {
+    if (!id || !revision) {
       continue;
     }
 
+    const key = asString(row.key) ?? "";
+    const title = asString(row.title) ?? id;
     renderViewIds.push(id);
     renderViews.push({
       id,
@@ -904,12 +904,12 @@ export async function getModelVersionBundle(modelVersionId: string): Promise<Mod
   for (const row of renderLayerRows) {
     const id = asString(row.id);
     const renderView = asRelationId(row.render_view);
-    const key = asString(row.key);
     const asset = asRelationId(row.asset);
-    if (!id || !renderView || !key || !asset) {
+    if (!id || !renderView || !asset) {
       continue;
     }
 
+    const key = asString(row.key) ?? id;
     const maskAsset = asRelationId(row.mask_asset);
     const colorAreaRow = asRawRecord(row.color_area);
 
