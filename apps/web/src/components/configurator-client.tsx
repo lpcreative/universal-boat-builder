@@ -22,6 +22,9 @@ interface ConfiguratorClientProps {
 }
 
 type PricingMode = "msrp" | "dealer";
+type ViewMode = "paged" | "all";
+
+const DEFAULT_VIEW_MODE: ViewMode = "paged";
 
 interface StepSection {
   id: string;
@@ -35,6 +38,11 @@ interface FlowStepGroup {
   title: string;
   flowTitle: string;
   sections: StepSection[];
+}
+
+interface PricePillInfo {
+  text: string;
+  tone: "included" | "positive" | "negative";
 }
 
 function asStringArray(value: SelectionState[string]): string[] {
@@ -66,18 +74,15 @@ function formatCurrency(amount: number): string {
   }).format(amount);
 }
 
-function lineItemExtendedPrice(line: PricingLineItem, mode: PricingMode): number {
-  if (line.isIncluded) {
-    return 0;
-  }
-  return ((mode === "dealer" ? line.dealer : line.msrp) ?? 0) * line.qty;
-}
-
-function lineItemUnitPrice(line: PricingLineItem, mode: PricingMode): number {
+function toUnitPrice(line: PricingLineItem, mode: PricingMode): number {
   if (line.isIncluded) {
     return 0;
   }
   return mode === "dealer" ? line.dealer ?? 0 : line.msrp ?? 0;
+}
+
+function toExtendedPrice(line: PricingLineItem, mode: PricingMode): number {
+  return toUnitPrice(line, mode) * line.qty;
 }
 
 function buildStepTree(selectionGroups: ConfigSelectionGroupView[]): FlowStepGroup[] {
@@ -129,6 +134,26 @@ function buildStepTree(selectionGroups: ConfigSelectionGroupView[]): FlowStepGro
   return Array.from(steps.values());
 }
 
+function PricePill(props: { info: PricePillInfo; each?: boolean; muted?: boolean }): JSX.Element {
+  const toneClass =
+    props.info.tone === "included"
+      ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+      : props.info.tone === "negative"
+        ? "bg-sky-50 text-sky-700 border-sky-200"
+        : "bg-slate-100 text-slate-700 border-slate-200";
+
+  return (
+    <span
+      className={`ml-3 inline-flex shrink-0 items-center rounded-full border px-2.5 py-1 text-xs font-medium tabular-nums ${toneClass} ${
+        props.muted ? "opacity-90" : ""
+      }`}
+    >
+      {props.info.text}
+      {props.each ? <span className="ml-1 text-[10px] uppercase tracking-[0.08em]">ea</span> : null}
+    </span>
+  );
+}
+
 function SummaryBar(props: {
   pricingMode: PricingMode;
   onPricingModeChange: (nextMode: PricingMode) => void;
@@ -151,7 +176,7 @@ function SummaryBar(props: {
       <div className="flex items-center justify-between gap-3">
         <div>
           <p className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">Total</p>
-          <p className="text-xl font-semibold text-slate-900">{formatCurrency(props.total)}</p>
+          <p className="text-xl font-semibold tabular-nums text-slate-900">{formatCurrency(props.total)}</p>
           <p className="text-xs text-slate-500">{activePriceLabel}</p>
         </div>
         <div className="inline-flex rounded-lg border border-slate-200 bg-slate-50 p-1 text-xs">
@@ -160,7 +185,7 @@ function SummaryBar(props: {
             onClick={() => {
               props.onPricingModeChange("msrp");
             }}
-            className={`rounded-md px-2.5 py-1.5 font-medium transition ${
+            className={`rounded-md px-2.5 py-1.5 font-medium transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 ${
               props.pricingMode === "msrp" ? "bg-white text-slate-900 shadow-sm" : "text-slate-600 hover:text-slate-900"
             }`}
           >
@@ -171,7 +196,7 @@ function SummaryBar(props: {
             onClick={() => {
               props.onPricingModeChange("dealer");
             }}
-            className={`rounded-md px-2.5 py-1.5 font-medium transition ${
+            className={`rounded-md px-2.5 py-1.5 font-medium transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 ${
               props.pricingMode === "dealer"
                 ? "bg-white text-slate-900 shadow-sm"
                 : "text-slate-600 hover:text-slate-900"
@@ -181,6 +206,7 @@ function SummaryBar(props: {
           </button>
         </div>
       </div>
+
       <div className="mt-2 flex items-center justify-between text-xs text-slate-600">
         <span>{props.selectedItems} selected</span>
         <span>{props.quantityTotal} quantity</span>
@@ -198,8 +224,8 @@ function SummaryBar(props: {
 
       <div
         id={props.expandedPanelId}
-        className={`overflow-hidden transition-[max-height,opacity,transform] duration-200 ${
-          props.isExpanded ? "mt-3 max-h-96 opacity-100" : "max-h-0 opacity-0"
+        className={`overflow-hidden transition-[max-height,opacity] duration-200 ${
+          props.isExpanded ? "mt-3 max-h-[32rem] opacity-100" : "max-h-0 opacity-0"
         }`}
       >
         <div className="grid gap-3 rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm">
@@ -212,15 +238,10 @@ function SummaryBar(props: {
                     <div>
                       <span>{line.label}</span>
                       {line.qty > 1 ? <span className="ml-1 text-xs text-slate-500">x{line.qty}</span> : null}
-                      {line.isIncluded ? (
-                        <span className="ml-2 rounded bg-emerald-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-emerald-700">
-                          Included
-                        </span>
-                      ) : null}
                     </div>
-                    <div className="text-right text-xs text-slate-600">
-                      <p>{formatCurrency(lineItemExtendedPrice(line, props.pricingMode))}</p>
-                      <p>Unit {formatCurrency(lineItemUnitPrice(line, props.pricingMode))}</p>
+                    <div className="text-right text-xs text-slate-600 tabular-nums">
+                      <p>{formatCurrency(toExtendedPrice(line, props.pricingMode))}</p>
+                      <p>Unit {formatCurrency(toUnitPrice(line, props.pricingMode))}</p>
                     </div>
                   </li>
                 ))}
@@ -229,6 +250,7 @@ function SummaryBar(props: {
               <p className="mt-1 text-slate-600">No selections yet.</p>
             )}
           </div>
+
           <div>
             <p className="text-xs font-semibold uppercase tracking-[0.1em] text-slate-500">Included items</p>
             {props.includedLineItems.length > 0 ? (
@@ -241,7 +263,7 @@ function SummaryBar(props: {
                         Included
                       </span>
                     </div>
-                    <p className="text-xs text-slate-600">{formatCurrency(0)}</p>
+                    <p className="text-xs text-slate-600 tabular-nums">{formatCurrency(0)}</p>
                   </li>
                 ))}
               </ul>
@@ -249,6 +271,7 @@ function SummaryBar(props: {
               <p className="mt-1 text-slate-600">No included items.</p>
             )}
           </div>
+
           <div>
             <p className="text-xs font-semibold uppercase tracking-[0.1em] text-slate-500">Warnings</p>
             {props.warnings.length > 0 ? (
@@ -261,7 +284,8 @@ function SummaryBar(props: {
               <p className="mt-1 text-slate-600">No warnings.</p>
             )}
           </div>
-          <div className="rounded-md border border-slate-200 bg-white p-2">
+
+          <div className="rounded-md border border-slate-200 bg-white p-2 tabular-nums">
             <p className="text-xs font-semibold uppercase tracking-[0.1em] text-slate-500">Totals</p>
             <div className="mt-1 text-xs text-slate-700">
               <p>MSRP: {formatCurrency(props.msrpTotal)}</p>
@@ -283,12 +307,18 @@ export function ConfiguratorClient(props: ConfiguratorClientProps): JSX.Element 
   const [error, setError] = useState<string | null>(null);
   const [pricingMode, setPricingMode] = useState<PricingMode>("msrp");
   const [isSummaryExpanded, setIsSummaryExpanded] = useState(false);
+  const [viewMode] = useState<ViewMode>(DEFAULT_VIEW_MODE);
 
   const requestIdRef = useRef(0);
-  const sectionRefs = useRef<Record<string, HTMLDivElement | null>>({});
+  const scrollContainerRef = useRef<HTMLDivElement | null>(null);
+  const scrollTopByStepIdRef = useRef<Record<string, number>>({});
 
   const sortedGroups = useMemo(
-    () => [...props.selectionGroups].sort((a, b) => (a.sort ?? Number.MAX_SAFE_INTEGER) - (b.sort ?? Number.MAX_SAFE_INTEGER) || a.id.localeCompare(b.id)),
+    () =>
+      [...props.selectionGroups].sort(
+        (a, b) =>
+          (a.sort ?? Number.MAX_SAFE_INTEGER) - (b.sort ?? Number.MAX_SAFE_INTEGER) || a.id.localeCompare(b.id)
+      ),
     [props.selectionGroups]
   );
   const stepTree = useMemo(() => buildStepTree(sortedGroups), [sortedGroups]);
@@ -303,6 +333,21 @@ export function ConfiguratorClient(props: ConfiguratorClientProps): JSX.Element 
       setActiveStepId(stepTree[0]?.id ?? null);
     }
   }, [activeStepId, stepTree]);
+
+  const activeStepIndex = useMemo(
+    () => stepTree.findIndex((step) => step.id === activeStepId),
+    [activeStepId, stepTree]
+  );
+  const activeStep = useMemo(
+    () => stepTree.find((step) => step.id === activeStepId) ?? null,
+    [activeStepId, stepTree]
+  );
+  const renderedSteps = useMemo(() => {
+    if (viewMode === "all") {
+      return stepTree;
+    }
+    return activeStep ? [activeStep] : [];
+  }, [activeStep, stepTree, viewMode]);
 
   const rerender = useCallback(
     async (nextSelections: SelectionState): Promise<void> => {
@@ -373,10 +418,7 @@ export function ConfiguratorClient(props: ConfiguratorClientProps): JSX.Element 
     };
   }, [selections, sortedGroups]);
 
-  const pricingResult = useMemo(
-    () => computePricing(props.pricingBundle, selections),
-    [props.pricingBundle, selections]
-  );
+  const pricingResult = useMemo(() => computePricing(props.pricingBundle, selections), [props.pricingBundle, selections]);
   const allWarnings = useMemo(() => [...warnings, ...pricingResult.warnings], [warnings, pricingResult.warnings]);
   const activeTotal = pricingMode === "dealer" ? pricingResult.totals.dealer : pricingResult.totals.msrp;
   const selectedPricingLineItems = useMemo(
@@ -387,6 +429,87 @@ export function ConfiguratorClient(props: ConfiguratorClientProps): JSX.Element 
     () => pricingResult.lineItems.filter((line) => line.source === "included"),
     [pricingResult.lineItems]
   );
+
+  const groupOptionByGroupAndVersionItem = useMemo(() => {
+    const map = new Map<string, ClientPricingBundle["group_options"][number]>();
+    for (const option of props.pricingBundle.group_options) {
+      map.set(`${option.selection_group}:${option.version_item}`, option);
+    }
+    return map;
+  }, [props.pricingBundle.group_options]);
+
+  const versionItemById = useMemo(
+    () =>
+      new Map(
+        props.pricingBundle.version_items.map((versionItem): [string, ClientPricingBundle["version_items"][number]] => [
+          versionItem.id,
+          versionItem
+        ])
+      ),
+    [props.pricingBundle.version_items]
+  );
+
+  const pricePillForOption = useCallback(
+    (groupId: string, versionItemId: string, isQuantity = false): PricePillInfo & { each: boolean } => {
+      const groupOption = groupOptionByGroupAndVersionItem.get(`${groupId}:${versionItemId}`);
+      const versionItem = versionItemById.get(versionItemId);
+      const unitRaw =
+        pricingMode === "dealer"
+          ? (groupOption?.override_dealer_price ?? versionItem?.dealer_price ?? 0)
+          : (groupOption?.override_msrp ?? versionItem?.msrp ?? 0);
+      const unitPrice = typeof unitRaw === "number" && Number.isFinite(unitRaw) ? unitRaw : 0;
+      const isIncluded = versionItem?.is_included === true || unitPrice === 0;
+
+      if (isIncluded) {
+        return {
+          text: "Included",
+          tone: "included",
+          each: isQuantity
+        };
+      }
+
+      if (unitPrice > 0) {
+        return {
+          text: `+${formatCurrency(unitPrice)}`,
+          tone: "positive",
+          each: isQuantity
+        };
+      }
+
+      return {
+        text: `–${formatCurrency(Math.abs(unitPrice))}`,
+        tone: "negative",
+        each: isQuantity
+      };
+    },
+    [groupOptionByGroupAndVersionItem, pricingMode, versionItemById]
+  );
+
+  const goToStep = useCallback(
+    (nextStepId: string) => {
+      const currentStepId = activeStepId;
+      const container = scrollContainerRef.current;
+      if (currentStepId && container) {
+        scrollTopByStepIdRef.current[currentStepId] = container.scrollTop;
+      }
+      setActiveStepId(nextStepId);
+    },
+    [activeStepId]
+  );
+
+  useEffect(() => {
+    if (viewMode !== "paged" || !activeStepId) {
+      return;
+    }
+    const container = scrollContainerRef.current;
+    if (!container) {
+      return;
+    }
+    container.scrollTop = scrollTopByStepIdRef.current[activeStepId] ?? 0;
+  }, [activeStepId, viewMode]);
+
+  const stepProgress =
+    stepTree.length > 0 && activeStepIndex >= 0 ? Math.round(((activeStepIndex + 1) / stepTree.length) * 100) : 0;
 
   return (
     <section className="grid grid-cols-1 gap-6 lg:grid-cols-12">
@@ -403,7 +526,9 @@ export function ConfiguratorClient(props: ConfiguratorClientProps): JSX.Element 
                 <img
                   src={dataUrl}
                   alt="Composite preview"
-                  className={`h-full w-full object-contain transition-opacity duration-200 ${isRendering ? "opacity-60" : "opacity-100"}`}
+                  className={`h-full w-full object-contain transition-opacity duration-200 ${
+                    isRendering ? "opacity-60" : "opacity-100"
+                  }`}
                 />
               ) : !error ? (
                 <div className="flex h-full items-center justify-center px-6 text-center text-sm text-slate-600">
@@ -411,17 +536,11 @@ export function ConfiguratorClient(props: ConfiguratorClientProps): JSX.Element 
                 </div>
               ) : null}
               {(isRendering || !dataUrl) && !error ? (
-                <div className="absolute inset-0 animate-pulse bg-gradient-to-r from-slate-200/30 via-white/60 to-slate-200/30" aria-hidden />
+                <div
+                  className="absolute inset-0 animate-pulse bg-gradient-to-r from-slate-200/30 via-white/60 to-slate-200/30"
+                  aria-hidden
+                />
               ) : null}
-            </div>
-            <div className="mt-4 grid grid-cols-4 gap-2">
-              <button
-                type="button"
-                disabled
-                className="rounded-lg border border-dashed border-slate-300 bg-slate-50 px-3 py-2 text-xs text-slate-500"
-              >
-                Thumbnails
-              </button>
             </div>
           </div>
         </div>
@@ -430,8 +549,20 @@ export function ConfiguratorClient(props: ConfiguratorClientProps): JSX.Element 
       <div className="lg:col-span-5">
         <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm lg:flex lg:h-[calc(100vh-3rem)] lg:flex-col">
           <header className="border-b border-slate-200 bg-white/90 px-5 py-4 backdrop-blur">
-            <p className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">Build Your Boat</p>
-            <h2 className="text-lg font-semibold text-slate-900">Options</h2>
+            <div className="flex items-end justify-between gap-3">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">Build Your Boat</p>
+                <h2 className="text-lg font-semibold text-slate-900">Options</h2>
+              </div>
+              <p className="text-xs font-medium text-slate-500">
+                {activeStepIndex + 1 > 0 ? `Step ${activeStepIndex + 1} of ${stepTree.length}` : `Steps ${stepTree.length}`}
+              </p>
+            </div>
+
+            <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-slate-100" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={stepProgress}>
+              <div className="h-full rounded-full bg-slate-900 transition-[width] duration-200" style={{ width: `${stepProgress}%` }} />
+            </div>
+
             <nav className="mt-3 flex gap-2 overflow-x-auto pb-1" aria-label="Configuration steps">
               {stepTree.map((step, index) => {
                 const isActive = step.id === activeStepId;
@@ -440,28 +571,68 @@ export function ConfiguratorClient(props: ConfiguratorClientProps): JSX.Element 
                     key={step.id}
                     type="button"
                     onClick={() => {
-                      setActiveStepId(step.id);
-                      const firstSectionId = step.sections[0]?.id;
-                      const target = firstSectionId ? sectionRefs.current[firstSectionId] : null;
-                      if (target) {
-                        target.scrollIntoView({ block: "start", behavior: "smooth" });
-                      }
+                      goToStep(step.id);
                     }}
                     className={`whitespace-nowrap rounded-full border px-3 py-1.5 text-xs font-medium transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 ${
                       isActive
                         ? "border-slate-900 bg-slate-900 text-white"
                         : "border-slate-300 bg-white text-slate-700 hover:border-slate-400 hover:text-slate-900"
                     }`}
+                    aria-current={isActive ? "step" : undefined}
                   >
                     {index + 1}. {step.title}
                   </button>
                 );
               })}
             </nav>
+
+            <div className="mt-3 flex items-center justify-between gap-2">
+              <button
+                type="button"
+                disabled={viewMode === "paged" ? activeStepIndex <= 0 : true}
+                className="rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
+                onClick={() => {
+                  if (viewMode !== "paged" || activeStepIndex <= 0) {
+                    return;
+                  }
+                  const previousStep = stepTree[activeStepIndex - 1];
+                  if (previousStep) {
+                    goToStep(previousStep.id);
+                  }
+                }}
+              >
+                Back
+              </button>
+              <button
+                type="button"
+                disabled={viewMode === "paged" ? activeStepIndex < 0 || activeStepIndex >= stepTree.length - 1 : true}
+                className="rounded-lg border border-slate-900 bg-slate-900 px-3 py-1.5 text-xs font-medium text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-40"
+                onClick={() => {
+                  if (viewMode !== "paged" || activeStepIndex < 0 || activeStepIndex >= stepTree.length - 1) {
+                    return;
+                  }
+                  const nextStep = stepTree[activeStepIndex + 1];
+                  if (nextStep) {
+                    goToStep(nextStep.id);
+                  }
+                }}
+              >
+                Next
+              </button>
+            </div>
           </header>
 
-          <div className="flex-1 space-y-5 overflow-y-auto px-5 py-4 pb-44 lg:pb-56">
-            {stepTree.map((step) => (
+          <div
+            ref={scrollContainerRef}
+            onScroll={() => {
+              if (viewMode !== "paged" || !activeStepId || !scrollContainerRef.current) {
+                return;
+              }
+              scrollTopByStepIdRef.current[activeStepId] = scrollContainerRef.current.scrollTop;
+            }}
+            className="flex-1 space-y-5 overflow-y-auto px-5 py-4 pb-44 lg:pb-56"
+          >
+            {renderedSteps.map((step) => (
               <section key={step.id} className="space-y-4" aria-label={step.title}>
                 <div className="rounded-xl border border-slate-200 bg-slate-50/80 px-4 py-3">
                   <p className="text-xs font-semibold uppercase tracking-[0.1em] text-slate-500">{step.flowTitle}</p>
@@ -469,13 +640,7 @@ export function ConfiguratorClient(props: ConfiguratorClientProps): JSX.Element 
                 </div>
 
                 {step.sections.map((section) => (
-                  <div
-                    key={section.id}
-                    ref={(element) => {
-                      sectionRefs.current[section.id] = element;
-                    }}
-                    className="space-y-3 rounded-xl border border-slate-200 p-4"
-                  >
+                  <div key={section.id} className="space-y-3 rounded-xl border border-slate-200 p-4">
                     <h4 className="text-sm font-semibold uppercase tracking-[0.08em] text-slate-600">{section.title}</h4>
 
                     {section.groups.map((group) => {
@@ -489,6 +654,7 @@ export function ConfiguratorClient(props: ConfiguratorClientProps): JSX.Element 
                             <div className="grid gap-2">
                               {group.options.map((option) => {
                                 const checked = asString(currentValue) === option.versionItemId;
+                                const pill = pricePillForOption(group.id, option.versionItemId, false);
                                 return (
                                   <label
                                     key={option.id}
@@ -498,10 +664,13 @@ export function ConfiguratorClient(props: ConfiguratorClientProps): JSX.Element 
                                         : "border-slate-300 bg-white text-slate-800 hover:border-slate-500"
                                     }`}
                                   >
-                                    <span>{option.label}</span>
+                                    <div className="flex min-w-0 items-center">
+                                      <span className="truncate">{option.label}</span>
+                                      <PricePill info={pill} />
+                                    </div>
                                     <input
                                       type="radio"
-                                      className="h-4 w-4 accent-sky-500"
+                                      className="ml-3 h-4 w-4 accent-sky-500"
                                       name={group.key}
                                       checked={checked}
                                       onChange={() => {
@@ -521,12 +690,15 @@ export function ConfiguratorClient(props: ConfiguratorClientProps): JSX.Element 
 
                       if (group.selectionMode === "boolean") {
                         const checked = asBoolean(currentValue);
+                        const booleanOptionId = group.options[0]?.versionItemId;
+                        const pill = booleanOptionId ? pricePillForOption(group.id, booleanOptionId, false) : null;
                         return (
                           <div key={group.id} className="rounded-lg border border-slate-300 px-3 py-3">
                             <div className="flex items-center justify-between gap-3">
-                              <div>
+                              <div className="min-w-0">
                                 <p className="text-sm font-medium text-slate-900">{group.title}</p>
                                 {group.helpText ? <p className="text-xs text-slate-500">{group.helpText}</p> : null}
+                                {pill ? <PricePill info={pill} muted /> : null}
                               </div>
                               <button
                                 type="button"
@@ -569,33 +741,37 @@ export function ConfiguratorClient(props: ConfiguratorClientProps): JSX.Element 
                             <div className="space-y-2">
                               {group.options.map((option) => {
                                 const checked = selected.has(option.versionItemId);
+                                const pill = pricePillForOption(group.id, option.versionItemId, false);
                                 return (
                                   <label
                                     key={option.id}
-                                    className={`flex cursor-pointer items-center gap-2 rounded-lg border px-3 py-2 text-sm transition ${
+                                    className={`flex cursor-pointer items-center justify-between gap-2 rounded-lg border px-3 py-2 text-sm transition ${
                                       checked
                                         ? "border-sky-400 bg-sky-50 text-sky-900"
                                         : "border-slate-300 bg-white text-slate-800 hover:border-slate-500"
                                     }`}
                                   >
-                                    <input
-                                      type="checkbox"
-                                      className="h-4 w-4 rounded border-slate-300 accent-sky-500"
-                                      checked={checked}
-                                      onChange={(event) => {
-                                        const nextSet = new Set(selected);
-                                        if (event.target.checked) {
-                                          nextSet.add(option.versionItemId);
-                                        } else {
-                                          nextSet.delete(option.versionItemId);
-                                        }
-                                        updateSelections({
-                                          ...selections,
-                                          [group.key]: Array.from(nextSet)
-                                        });
-                                      }}
-                                    />
-                                    {option.label}
+                                    <div className="flex min-w-0 items-center">
+                                      <input
+                                        type="checkbox"
+                                        className="mr-2 h-4 w-4 rounded border-slate-300 accent-sky-500"
+                                        checked={checked}
+                                        onChange={(event) => {
+                                          const nextSet = new Set(selected);
+                                          if (event.target.checked) {
+                                            nextSet.add(option.versionItemId);
+                                          } else {
+                                            nextSet.delete(option.versionItemId);
+                                          }
+                                          updateSelections({
+                                            ...selections,
+                                            [group.key]: Array.from(nextSet)
+                                          });
+                                        }}
+                                      />
+                                      <span className="truncate">{option.label}</span>
+                                    </div>
+                                    <PricePill info={pill} />
                                   </label>
                                 );
                               })}
@@ -609,10 +785,21 @@ export function ConfiguratorClient(props: ConfiguratorClientProps): JSX.Element 
                       const max = group.maxSelect ?? 999;
                       const canDecrease = quantity > min;
                       const canIncrease = quantity < max;
+                      const quantityOptionId =
+                        typeof currentValue === "string" && currentValue.length > 0
+                          ? currentValue
+                          : group.options[0]?.versionItemId;
+                      const quantityPill = quantityOptionId ? pricePillForOption(group.id, quantityOptionId, true) : null;
+
                       return (
                         <div key={group.id} className="rounded-lg border border-slate-300 px-3 py-3">
-                          <p className="text-sm font-medium text-slate-900">{group.title}</p>
-                          {group.helpText ? <p className="text-xs text-slate-500">{group.helpText}</p> : null}
+                          <div className="flex items-center justify-between gap-3">
+                            <div className="min-w-0">
+                              <p className="text-sm font-medium text-slate-900">{group.title}</p>
+                              {group.helpText ? <p className="text-xs text-slate-500">{group.helpText}</p> : null}
+                            </div>
+                            {quantityPill ? <PricePill info={quantityPill} each /> : null}
+                          </div>
                           <div className="mt-2 flex items-center gap-2">
                             <button
                               type="button"
@@ -631,7 +818,7 @@ export function ConfiguratorClient(props: ConfiguratorClientProps): JSX.Element 
                               type="number"
                               min={min}
                               max={max}
-                              className="w-20 rounded-md border border-slate-300 px-2 py-1 text-center text-sm outline-none focus-visible:ring-2 focus-visible:ring-sky-500"
+                              className="w-20 rounded-md border border-slate-300 px-2 py-1 text-center text-sm tabular-nums outline-none focus-visible:ring-2 focus-visible:ring-sky-500"
                               value={quantity}
                               onChange={(event) => {
                                 const parsedValue = Number(event.target.value);
