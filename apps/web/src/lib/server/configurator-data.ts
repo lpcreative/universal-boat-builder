@@ -1,6 +1,7 @@
 import "server-only";
 
 import { getModelVersionBundle, getPublishedModels } from "@ubb/cms-adapter-directus";
+import { buildColorByAreaKey } from "@ubb/compiler";
 import type {
   ColorPaletteItemRecord,
   GroupOptionRecord,
@@ -8,9 +9,9 @@ import type {
   SelectionGroupRecord,
   VersionItemRecord
 } from "@ubb/cms-adapter-directus";
-import { buildColorByAreaKey } from "@ubb/engine";
 import {
   bySortThenId,
+  type ClientPricingBundle,
   type ClientRenderConfig,
   type ConfigOptionView,
   type ConfigSelectionGroupView,
@@ -29,6 +30,7 @@ export interface InitialConfiguratorData {
   selections: SelectionState;
   colorByAreaKey: Record<string, string>;
   renderConfig: ClientRenderConfig;
+  pricingBundle: ClientPricingBundle;
 }
 
 function readModelVersionIdFromEnv(): string | null {
@@ -241,18 +243,41 @@ function toGroupsView(bundle: ModelVersionBundle): ConfigSelectionGroupView[] {
   const sortedGroups = [...bundle.selection_groups].sort(bySortThenId);
   const versionItemsById = createVersionItemMap(bundle);
   const groupOptionsByGroupId = createGroupOptionsMap(bundle);
+  const sectionsById = new Map(bundle.flow_sections.map((section) => [section.id, section]));
+  const stepsById = new Map(bundle.flow_steps.map((step) => [step.id, step]));
+  const flowsById = new Map(bundle.flows.map((flow) => [flow.id, flow]));
 
-  return sortedGroups.map((group) => ({
-    id: group.id,
-    key: selectionStateKey(group),
-    title: group.title,
-    selectionMode: group.selection_mode,
-    sort: group.sort ?? null,
-    options: toOptions({
-      groupOptions: groupOptionsByGroupId.get(group.id) ?? [],
-      versionItemsById
-    })
-  }));
+  return sortedGroups.map((group) => {
+    const section = sectionsById.get(group.section);
+    const step = section ? stepsById.get(section.step) : undefined;
+    const flow = step ? flowsById.get(step.flow) : undefined;
+
+    return {
+      id: group.id,
+      key: selectionStateKey(group),
+      title: group.title,
+      selectionMode: group.selection_mode,
+      flowId: flow?.id ?? "unknown-flow",
+      flowTitle: flow?.title ?? "Configuration",
+      flowSort: flow?.sort ?? null,
+      stepId: step?.id ?? "unknown-step",
+      stepKey: step?.key ?? "general",
+      stepTitle: step?.title ?? "General",
+      stepSort: step?.sort ?? null,
+      sectionId: section?.id ?? "unknown-section",
+      sectionTitle: section?.title ?? "Options",
+      sectionSort: section?.sort ?? null,
+      minSelect: group.min_select ?? null,
+      maxSelect: group.max_select ?? null,
+      isRequired: group.is_required === true,
+      helpText: group.help_text ?? null,
+      sort: group.sort ?? null,
+      options: toOptions({
+        groupOptions: groupOptionsByGroupId.get(group.id) ?? [],
+        versionItemsById
+      })
+    };
+  });
 }
 
 export async function listPublishedModelVersionChoices(): Promise<PublishedModelVersionChoice[]> {
@@ -364,6 +389,7 @@ export async function createInitialConfiguratorData(args: {
         version_items: bundle.version_items,
         color_palette_items: bundle.color_palette_items
       }
-    }
+    },
+    pricingBundle: bundle
   };
 }

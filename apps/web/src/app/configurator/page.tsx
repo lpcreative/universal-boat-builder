@@ -101,9 +101,11 @@ MODEL_VERSION_ID=`}
     const data = await createInitialConfiguratorData({
       modelVersionId: selection.modelVersionId
     });
+    const selectedChoice = selection.choices.find((choice) => choice.modelVersionId === data.modelVersionId);
+    const modelLabel = selectedChoice?.label ?? `Model Version ${data.modelVersionId}`;
 
     return (
-      <main className="mx-auto grid w-full max-w-5xl gap-4 px-4 py-8 md:px-6">
+      <main className="mx-auto grid w-full max-w-7xl gap-4 px-4 py-8 md:px-6">
         <h1 className="text-2xl font-semibold tracking-tight text-slate-900">Configurator</h1>
         {selection.choices.length > 1 && selection.source !== "env"
           ? modelVersionSelector({
@@ -120,11 +122,13 @@ MODEL_VERSION_ID=`}
 
         <ConfiguratorClient
           modelVersionId={data.modelVersionId}
+          modelLabel={modelLabel}
           showCopyModelVersionIdButton={selection.choices.length > 1}
           selectionGroups={data.selectionGroups}
           initialSelections={data.selections}
           initialColorByAreaKey={data.colorByAreaKey}
           renderConfig={data.renderConfig}
+          pricingBundle={data.pricingBundle}
         />
       </main>
     );
