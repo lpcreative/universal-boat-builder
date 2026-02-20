@@ -15,6 +15,20 @@ export interface ConfigSelectionGroupView {
   key: string;
   title: string;
   selectionMode: "single" | "multi" | "boolean" | "quantity";
+  flowId: string;
+  flowTitle: string;
+  flowSort: number | null;
+  stepId: string;
+  stepKey: string;
+  stepTitle: string;
+  stepSort: number | null;
+  sectionId: string;
+  sectionTitle: string;
+  sectionSort: number | null;
+  minSelect: number | null;
+  maxSelect: number | null;
+  isRequired: boolean;
+  helpText: string | null;
   sort: number | null;
   options: ConfigOptionView[];
 }
@@ -29,6 +43,8 @@ export interface ClientRenderConfig {
   renderLayers: ModelVersionBundle["render_layers"];
   colorSelectionBundle: ClientColorSelectionBundle;
 }
+
+export type ClientPricingBundle = ModelVersionBundle;
 
 export function bySortThenId<T extends { sort?: number | null; id: string }>(a: T, b: T): number {
   const aSort = a.sort ?? Number.MAX_SAFE_INTEGER;
