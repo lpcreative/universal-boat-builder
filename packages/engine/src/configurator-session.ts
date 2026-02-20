@@ -1,13 +1,11 @@
-import {
-  getModelVersionBundle,
-  type ColorPaletteItemRecord,
-  type GroupOptionRecord,
-  type ModelVersionBundle,
-  type RenderViewRecord,
-  type SelectionGroupRecord,
-  type VersionItemRecord
+import type {
+  ColorPaletteItemRecord,
+  GroupOptionRecord,
+  ModelVersionBundle,
+  SelectionGroupRecord,
+  VersionItemRecord
 } from "@ubb/cms-adapter-directus";
-import { buildColorByAreaKey, render_view_to_data_url } from "@ubb/compiler";
+import { buildColorByAreaKey } from "@ubb/compiler";
 
 type SelectionValue = string | string[] | boolean | number | null;
 export type SelectionState = Record<string, SelectionValue>;
@@ -23,6 +21,11 @@ export interface ConfiguratorSession {
 
 export interface CreateConfiguratorSessionInput {
   modelVersionId: string;
+  audience?: string;
+}
+
+export interface CreateConfiguratorSessionFromBundleInput {
+  bundle: ModelVersionBundle;
   audience?: string;
 }
 
@@ -247,11 +250,6 @@ export function createDeterministicSelectionState(bundle: ModelVersionBundle): {
   return { selections, warnings };
 }
 
-function firstRenderView(bundle: ModelVersionBundle): RenderViewRecord | null {
-  const sortedViews = [...bundle.render_views].sort(bySortThenId);
-  return sortedViews[0] ?? null;
-}
-
 export function collectTintLayerWarnings(bundle: ModelVersionBundle): string[] {
   const warnings: string[] = [];
   const colorGroupAreaIds = new Set(
@@ -289,29 +287,29 @@ export async function createConfiguratorSession(
   input: CreateConfiguratorSessionInput
 ): Promise<ConfiguratorSession> {
   const { modelVersionId, audience } = input;
-  void audience;
-
+  const { getModelVersionBundle } = await import("@ubb/cms-adapter-directus");
   const bundle = await getModelVersionBundle(modelVersionId);
   if (!bundle) {
     throw new Error(`No published model version bundle found for "${modelVersionId}".`);
   }
+  return createConfiguratorSessionFromBundle({
+    bundle,
+    audience
+  });
+}
 
+export async function createConfiguratorSessionFromBundle(
+  input: CreateConfiguratorSessionFromBundleInput
+): Promise<ConfiguratorSession> {
+  const { bundle, audience } = input;
+  void audience;
   const { selections, warnings } = createDeterministicSelectionState(bundle);
   warnings.push(...collectTintLayerWarnings(bundle));
 
   const colorByAreaKey = buildColorByAreaKey(bundle, selections, (message: unknown) => warnings.push(String(message)));
   const renders: Array<{ viewKey: string; dataUrl: string }> = [];
-  const firstView = firstRenderView(bundle);
-
-  if (firstView) {
-    const dataUrl = await render_view_to_data_url({
-      view: firstView,
-      layers: bundle.render_layers,
-      selections,
-      colorByAreaKey,
-      fileUrlForId: createDirectusAssetUrlResolver()
-    });
-    renders.push({ viewKey: firstView.key, dataUrl });
+  if (bundle.render_views.length > 0) {
+    warnings.push("server-side preview rendering is disabled; use client compositor or dedicated render endpoint");
   }
 
   return {

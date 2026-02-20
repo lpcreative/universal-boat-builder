@@ -22,8 +22,10 @@ export async function POST(request: Request): Promise<Response> {
   }
 
   try {
-    const [{ getModelVersionBundle }, { buildColorByAreaKey, render_view_to_data_url }, { createDirectusAssetUrlResolver }] =
-      await Promise.all([import("@ubb/cms-adapter-directus"), import("@ubb/compiler"), import("@ubb/engine")]);
+    const [{ getModelVersionBundle }, { buildColorByAreaKey }] = await Promise.all([
+      import("@ubb/cms-adapter-directus"),
+      import("@ubb/compiler")
+    ]);
     const body = (await request.json()) as RenderRequestBody;
     const modelVersionId = typeof body.modelVersionId === "string" ? body.modelVersionId : "";
 
@@ -41,15 +43,10 @@ export async function POST(request: Request): Promise<Response> {
     const colorByAreaKey = buildColorByAreaKey(bundle, selections, (message: unknown) => warnings.push(String(message)));
 
     const view = firstRenderView(bundle);
-    const dataUrl = view
-      ? await render_view_to_data_url({
-          view,
-          layers: bundle.render_layers,
-          selections,
-          colorByAreaKey,
-          fileUrlForId: createDirectusAssetUrlResolver(env.apiUrl)
-        })
-      : null;
+    const dataUrl = null;
+    if (view) {
+      warnings.push("Server preview rendering is disabled in Node runtime; client compositor should render preview.");
+    }
 
     return NextResponse.json({
       dataUrl,
