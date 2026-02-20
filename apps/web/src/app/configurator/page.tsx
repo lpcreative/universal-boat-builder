@@ -99,9 +99,7 @@ MODEL_VERSION_ID=`}
 
   try {
     const data = await createInitialConfiguratorData({
-      modelVersionId: selection.modelVersionId,
-      apiUrl: env.apiUrl,
-      assetToken: env.token
+      modelVersionId: selection.modelVersionId
     });
 
     return (

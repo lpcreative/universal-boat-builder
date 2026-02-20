@@ -33,6 +33,7 @@ export function ConfiguratorClient(props: ConfiguratorClientProps): JSX.Element 
   const [selections, setSelections] = useState<SelectionState>(props.initialSelections);
   const [dataUrl, setDataUrl] = useState<string | null>(null);
   const [colorByAreaKey, setColorByAreaKey] = useState<Record<string, string>>(props.initialColorByAreaKey);
+  const [warnings, setWarnings] = useState<string[]>([]);
   const [isRendering, setIsRendering] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -61,6 +62,7 @@ export function ConfiguratorClient(props: ConfiguratorClientProps): JSX.Element 
 
       setDataUrl(payload.dataUrl);
       setColorByAreaKey(payload.colorByAreaKey);
+      setWarnings(payload.warnings);
     } catch (unknownError) {
       if (requestId !== requestIdRef.current) {
         return;
@@ -68,6 +70,7 @@ export function ConfiguratorClient(props: ConfiguratorClientProps): JSX.Element 
 
       const message = unknownError instanceof Error ? unknownError.message : "Unknown render error";
       setError(message);
+      setWarnings([]);
     } finally {
       if (requestId === requestIdRef.current) {
         setIsRendering(false);
@@ -84,41 +87,32 @@ export function ConfiguratorClient(props: ConfiguratorClientProps): JSX.Element 
     void rerender(props.initialSelections);
   }, [props.initialSelections, rerender]);
 
+  const pricingSummary = useMemo(() => {
+    let selectedItems = 0;
+    let quantityTotal = 0;
+
+    for (const group of sortedGroups) {
+      const value = selections[group.key];
+      if (group.selectionMode === "single" && typeof value === "string" && value.length > 0) {
+        selectedItems += 1;
+      } else if (group.selectionMode === "multi" && Array.isArray(value)) {
+        selectedItems += value.filter((entry): entry is string => typeof entry === "string" && entry.length > 0).length;
+      } else if (group.selectionMode === "boolean" && value === true) {
+        selectedItems += 1;
+      } else if (group.selectionMode === "quantity" && typeof value === "number" && Number.isFinite(value)) {
+        quantityTotal += Math.max(0, value);
+      }
+    }
+
+    return {
+      selectedItems,
+      quantityTotal
+    };
+  }, [selections, sortedGroups]);
+
   return (
-    <section className="grid gap-4">
-      <div className="rounded-lg border border-slate-200 bg-white p-3">
-        {dataUrl ? (
-          <img src={dataUrl} alt="Composite preview" className="w-full max-w-[720px] rounded border border-slate-200" />
-        ) : (
-          <p className="text-sm text-slate-700">No render view is configured for this model version.</p>
-        )}
-      </div>
-
-      <div className="rounded-lg border border-slate-200 bg-white p-4">
-        <h2 className="text-lg font-semibold text-slate-900">Debug</h2>
-        <p className="mt-2 text-sm text-slate-700">
-          <strong>modelVersionId:</strong> {props.modelVersionId}
-        </p>
-        {props.showCopyModelVersionIdButton ? (
-          <button
-            type="button"
-            className="mt-2 rounded-md border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50"
-            onClick={() => {
-              void navigator.clipboard.writeText(props.modelVersionId);
-            }}
-          >
-            Copy MODEL_VERSION_ID
-          </button>
-        ) : null}
-        <p className="mt-2 text-sm text-slate-700">
-          <strong>selectionGroups:</strong> {sortedGroups.length}
-        </p>
-        <pre className="mt-2 overflow-x-auto rounded-md bg-slate-950 p-3 text-xs text-slate-100">
-          {JSON.stringify(colorByAreaKey, null, 2)}
-        </pre>
-      </div>
-
-      <div className="rounded-lg border border-slate-200 bg-white p-4">
+    <section className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(360px,420px)] lg:items-start">
+      <div className="order-2 rounded-lg border border-slate-200 bg-white p-4 lg:order-1">
         <h2 className="text-lg font-semibold text-slate-900">Selections</h2>
         {sortedGroups.map((group) => {
           const currentValue = selections[group.key];
@@ -219,6 +213,60 @@ export function ConfiguratorClient(props: ConfiguratorClientProps): JSX.Element 
 
         {isRendering ? <p className="text-sm text-slate-600">Rendering...</p> : null}
         {error ? <p className="rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-900">Render error: {error}</p> : null}
+      </div>
+
+      <div className="order-1 grid gap-4 lg:order-2">
+        <div className="rounded-lg border border-slate-200 bg-white p-3">
+          {dataUrl ? (
+            <img src={dataUrl} alt="Composite preview" className="w-full rounded border border-slate-200" />
+          ) : !error ? (
+            <p className="text-sm text-slate-700">No render view is configured for this model version.</p>
+          ) : null}
+        </div>
+
+        <div className="rounded-lg border border-slate-200 bg-white p-4">
+          <h2 className="text-lg font-semibold text-slate-900">Pricing summary</h2>
+          <p className="mt-2 text-sm text-slate-700">
+            <strong>Selected options:</strong> {pricingSummary.selectedItems}
+          </p>
+          <p className="mt-1 text-sm text-slate-700">
+            <strong>Quantity total:</strong> {pricingSummary.quantityTotal}
+          </p>
+          <p className="mt-1 text-sm text-slate-700">
+            <strong>Estimated total:</strong> N/A (pricing lines not wired in this snapshot view)
+          </p>
+        </div>
+
+        <div className="rounded-lg border border-slate-200 bg-white p-4">
+          <h2 className="text-lg font-semibold text-slate-900">Debug</h2>
+          <p className="mt-2 text-sm text-slate-700">
+            <strong>modelVersionId:</strong> {props.modelVersionId}
+          </p>
+          {props.showCopyModelVersionIdButton ? (
+            <button
+              type="button"
+              className="mt-2 rounded-md border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50"
+              onClick={() => {
+                void navigator.clipboard.writeText(props.modelVersionId);
+              }}
+            >
+              Copy MODEL_VERSION_ID
+            </button>
+          ) : null}
+          <p className="mt-2 text-sm text-slate-700">
+            <strong>selectionGroups:</strong> {sortedGroups.length}
+          </p>
+          {warnings.length > 0 ? (
+            <ul className="mt-2 list-inside list-disc rounded-md border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
+              {warnings.map((warning, index) => (
+                <li key={`${index}-${warning}`}>{warning}</li>
+              ))}
+            </ul>
+          ) : null}
+          <pre className="mt-2 overflow-x-auto rounded-md bg-slate-950 p-3 text-xs text-slate-100">
+            {JSON.stringify(colorByAreaKey, null, 2)}
+          </pre>
+        </div>
       </div>
     </section>
   );
