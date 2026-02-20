@@ -294,7 +294,7 @@ export async function pickModelVersion(args: {
   selectedModelVersionId: string | null;
 }): Promise<{
   modelVersionId: string | null;
-  source: "env" | "single" | "selected" | "none";
+  source: "env" | "single" | "selected" | "first" | "none";
   choices: PublishedModelVersionChoice[];
 }> {
   const envModelVersionId = readModelVersionIdFromEnv();
@@ -333,8 +333,8 @@ export async function pickModelVersion(args: {
   }
 
   return {
-    modelVersionId: null,
-    source: "none",
+    modelVersionId: choices[0]?.modelVersionId ?? null,
+    source: "first",
     choices
   };
 }
@@ -342,6 +342,7 @@ export async function pickModelVersion(args: {
 export async function createInitialConfiguratorData(args: {
   modelVersionId: string;
   apiUrl: string;
+  assetToken: string | null;
 }): Promise<InitialConfiguratorData> {
   const bundle = await getModelVersionBundle(args.modelVersionId);
   if (!bundle) {
@@ -358,6 +359,7 @@ export async function createInitialConfiguratorData(args: {
     colorByAreaKey,
     renderConfig: {
       assetBaseUrl: args.apiUrl.replace(/\/$/, ""),
+      assetToken: args.assetToken,
       renderViews: bundle.render_views,
       renderLayers: bundle.render_layers,
       colorSelectionBundle: {

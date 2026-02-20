@@ -21,10 +21,6 @@ export interface ClientRenderResult {
   warnings: string[];
 }
 
-function fileUrlForId(assetBaseUrl: string, fileId: string): string {
-  return `${assetBaseUrl}/assets/${fileId}`;
-}
-
 type Logger = (message: string) => void;
 type SelectionObject = Record<string, unknown>;
 
@@ -32,6 +28,20 @@ const imageCache = new Map<string, Promise<HTMLImageElement>>();
 
 function readString(value: unknown): string | null {
   return typeof value === "string" && value.length > 0 ? value : null;
+}
+
+function directusAssetUrl(args: { assetBaseUrl: string; fileId: string; assetToken: string | null }): string {
+  const fileId = args.fileId.trim();
+  if (fileId.length === 0) {
+    throw new Error("Render layer has an empty file id. Check render_layers.asset/mask_asset.");
+  }
+
+  const base = args.assetBaseUrl.replace(/\/$/, "");
+  const url = new URL(`${base}/assets/${encodeURIComponent(fileId)}`);
+  if (args.assetToken && args.assetToken.length > 0) {
+    url.searchParams.set("access_token", args.assetToken);
+  }
+  return url.toString();
 }
 
 function pickFromObject(value: SelectionObject, keys: string[]): string | null {
@@ -269,19 +279,49 @@ function getContext2d(canvas: HTMLCanvasElement): CanvasRenderingContext2D {
   return context;
 }
 
+async function fetchImageBlob(url: string): Promise<Blob> {
+  let response: Response;
+  try {
+    response = await fetch(url, { method: "GET" });
+  } catch {
+    throw new Error(`Failed to fetch render asset ${url}. Check Directus CORS and connectivity.`);
+  }
+
+  if (!response.ok) {
+    if (response.status === 403 || response.status === 404) {
+      throw new Error(
+        `Failed to fetch render asset ${url} (${response.status}). ` +
+          "Verify app-reader token and read access to directus_files."
+      );
+    }
+    throw new Error(`Failed to fetch render asset ${url} (${response.status}).`);
+  }
+
+  return response.blob();
+}
+
 function loadImage(url: string): Promise<HTMLImageElement> {
   const cached = imageCache.get(url);
   if (cached) {
     return cached;
   }
 
-  const promise = new Promise<HTMLImageElement>((resolve, reject) => {
-    const image = new Image();
-    image.crossOrigin = "anonymous";
-    image.onload = () => resolve(image);
-    image.onerror = () => reject(new Error(`failed to load image: ${url}`));
-    image.src = url;
-  });
+  const promise = (async () => {
+    const blob = await fetchImageBlob(url);
+    return await new Promise<HTMLImageElement>((resolve, reject) => {
+      const blobUrl = URL.createObjectURL(blob);
+      const image = new Image();
+      image.onload = () => {
+        URL.revokeObjectURL(blobUrl);
+        resolve(image);
+      };
+      image.onerror = () => {
+        URL.revokeObjectURL(blobUrl);
+        reject(new Error(`Failed to decode render asset image ${url}.`));
+      };
+      image.src = blobUrl;
+    });
+  })();
 
   imageCache.set(url, promise);
   return promise;
@@ -314,6 +354,7 @@ export async function renderFirstViewToDataUrl(args: {
   renderViews: RenderViewRecord[];
   renderLayers: RenderLayerRecord[];
   assetBaseUrl: string;
+  assetToken: string | null;
   colorByAreaKey: Record<string, string>;
 }): Promise<string | null> {
   if (typeof window === "undefined" || typeof document === "undefined") {
@@ -338,14 +379,26 @@ export async function renderFirstViewToDataUrl(args: {
     throw new Error(`render view "${firstView.key}" has no base image layer`);
   }
 
-  const baseImage = await loadImage(fileUrlForId(args.assetBaseUrl, firstImageLayer.asset));
+  const baseImage = await loadImage(
+    directusAssetUrl({
+      assetBaseUrl: args.assetBaseUrl,
+      fileId: firstImageLayer.asset,
+      assetToken: args.assetToken
+    })
+  );
   const canvas = createCanvas(baseImage.naturalWidth || baseImage.width, baseImage.naturalHeight || baseImage.height);
   const context = getContext2d(canvas);
 
   context.clearRect(0, 0, canvas.width, canvas.height);
 
   for (const layer of imageLayers) {
-    const image = await loadImage(fileUrlForId(args.assetBaseUrl, layer.asset));
+    const image = await loadImage(
+      directusAssetUrl({
+        assetBaseUrl: args.assetBaseUrl,
+        fileId: layer.asset,
+        assetToken: args.assetToken
+      })
+    );
     context.save();
     context.globalCompositeOperation = normalizeBlendMode(layer.blend_mode);
     context.globalAlpha = normalizeOpacity(layer.opacity);
@@ -365,7 +418,13 @@ export async function renderFirstViewToDataUrl(args: {
       continue;
     }
 
-    const maskImage = await loadImage(fileUrlForId(args.assetBaseUrl, maskAsset));
+    const maskImage = await loadImage(
+      directusAssetUrl({
+        assetBaseUrl: args.assetBaseUrl,
+        fileId: maskAsset,
+        assetToken: args.assetToken
+      })
+    );
     const offscreen = createCanvas(canvas.width, canvas.height);
     const offscreenContext = getContext2d(offscreen);
 
@@ -384,7 +443,13 @@ export async function renderFirstViewToDataUrl(args: {
   }
 
   for (const layer of decalLayers) {
-    const image = await loadImage(fileUrlForId(args.assetBaseUrl, layer.asset));
+    const image = await loadImage(
+      directusAssetUrl({
+        assetBaseUrl: args.assetBaseUrl,
+        fileId: layer.asset,
+        assetToken: args.assetToken
+      })
+    );
     context.save();
     context.globalCompositeOperation = "source-over";
     context.globalAlpha = normalizeOpacity(layer.opacity);
@@ -409,6 +474,7 @@ export async function renderMaskTintPreview(args: {
     renderViews: args.renderConfig.renderViews,
     renderLayers: args.renderConfig.renderLayers,
     assetBaseUrl: args.renderConfig.assetBaseUrl,
+    assetToken: args.renderConfig.assetToken,
     colorByAreaKey
   });
 

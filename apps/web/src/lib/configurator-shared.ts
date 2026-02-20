@@ -26,6 +26,7 @@ export type ClientColorSelectionBundle = Pick<
 
 export interface ClientRenderConfig {
   assetBaseUrl: string;
+  assetToken: string | null;
   renderViews: ModelVersionBundle["render_views"];
   renderLayers: ModelVersionBundle["render_layers"];
   colorSelectionBundle: ClientColorSelectionBundle;
