@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { DirectusHttpError } from "@ubb/cms-adapter-directus";
 import { QuoteActions } from "../../../components/quote-actions";
+import { QuoteDetailsForm } from "../../../components/quote-details-form";
 import { getQuoteById } from "../../../lib/server/quotes";
 
 interface QuotePageProps {
@@ -139,6 +140,9 @@ export default async function QuotePage(props: QuotePageProps): Promise<JSX.Elem
 
         <div className="mt-5">
           <QuoteActions resumeHref={resumeHref} />
+        </div>
+        <div className="mt-5">
+          <QuoteDetailsForm quoteId={quote.id} initialCustomerInfo={quote.customerInfo} />
         </div>
       </section>
 
