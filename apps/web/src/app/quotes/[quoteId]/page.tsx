@@ -149,7 +149,7 @@ export default async function QuotePage(props: QuotePageProps): Promise<JSX.Elem
         </dl>
 
         <div className="mt-5">
-          <QuoteActions resumeHref={resumeHref} shareHref={shareHref} />
+          <QuoteActions resumeHref={resumeHref} shareHref={shareHref} quoteId={quote.id} />
         </div>
         <div className="mt-5">
           <QuoteDetailsForm quoteId={quote.id} initialCustomerInfo={quote.customerInfo} />
