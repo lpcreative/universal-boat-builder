@@ -157,6 +157,18 @@ function normalizeCustomerInfo(input: Partial<QuoteCustomerInfo>): QuoteCustomer
   };
 }
 
+function createNoStoreClient(args: { baseUrl: string; token: string }): DirectusHttpClient {
+  return new DirectusHttpClient({
+    baseUrl: args.baseUrl,
+    token: args.token,
+    fetchImpl: (input: RequestInfo | URL, init?: RequestInit) =>
+      fetch(input, {
+        ...init,
+        cache: "no-store"
+      })
+  });
+}
+
 function parseTotalsSnapshot(value: unknown): QuoteTotalsSnapshot | null {
   if (!isObjectRecord(value)) {
     return null;
@@ -269,7 +281,7 @@ export async function createQuoteFromConfigurator(input: QuoteCreateInput): Prom
     }
   };
 
-  const client = new DirectusHttpClient({
+  const client = createNoStoreClient({
     baseUrl: readEnv.apiUrl,
     token: writeToken
   });
@@ -302,14 +314,17 @@ export async function getQuoteById(quoteId: string): Promise<QuoteRecordView | n
   }
   const writeToken = readRequiredDirectusWriteToken();
 
-  const client = new DirectusHttpClient({
+  const client = createNoStoreClient({
     baseUrl: env.apiUrl,
     token: writeToken
   });
 
   try {
     const quote = await client.request<QuoteDirectusRecord>({
-      path: `/items/quotes/${encodeURIComponent(quoteId)}`
+      path: `/items/quotes/${encodeURIComponent(quoteId)}`,
+      query: {
+        fields: "id,quote_number,status,date_created,channel,revision,customer_info,totals_snapshot,selections_snapshot"
+      }
     });
 
     return {
@@ -337,7 +352,7 @@ export async function listQuotes(args: { limit: number }): Promise<QuoteListItem
   }
   const writeToken = readRequiredDirectusWriteToken();
 
-  const client = new DirectusHttpClient({
+  const client = createNoStoreClient({
     baseUrl: env.apiUrl,
     token: writeToken
   });
@@ -378,7 +393,7 @@ export async function updateQuoteCustomerInfo(args: {
   }
   const writeToken = readRequiredDirectusWriteToken();
 
-  const client = new DirectusHttpClient({
+  const client = createNoStoreClient({
     baseUrl: env.apiUrl,
     token: writeToken
   });

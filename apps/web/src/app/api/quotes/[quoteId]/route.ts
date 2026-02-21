@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { revalidatePath } from "next/cache";
 import { DirectusHttpError } from "@ubb/cms-adapter-directus";
 import { updateQuoteCustomerInfo } from "../../../../lib/server/quotes";
 
@@ -52,6 +53,8 @@ export async function PATCH(
       quoteId,
       customerInfo
     });
+    revalidatePath(`/quotes/${quoteId}`);
+    revalidatePath("/quotes");
 
     return NextResponse.json({ customer_info: updated }, { status: 200 });
   } catch (error) {

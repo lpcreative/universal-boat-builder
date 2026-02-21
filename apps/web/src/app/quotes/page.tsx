@@ -2,6 +2,8 @@ import Link from "next/link";
 import { DirectusHttpError } from "@ubb/cms-adapter-directus";
 import { listQuotes } from "../../lib/server/quotes";
 
+export const dynamic = "force-dynamic";
+
 function formatDate(value: string | null): string {
   if (!value) {
     return "—";
