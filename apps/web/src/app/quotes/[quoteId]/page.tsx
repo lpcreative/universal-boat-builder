@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { DirectusHttpError } from "@ubb/cms-adapter-directus";
 import { QuoteActions } from "../../../components/quote-actions";
 import { getQuoteById } from "../../../lib/server/quotes";
 
@@ -54,7 +55,28 @@ function buildResumeHref(args: {
 }
 
 export default async function QuotePage(props: QuotePageProps): Promise<JSX.Element> {
-  const quote = await getQuoteById(props.params.quoteId);
+  let quote = null;
+  try {
+    quote = await getQuoteById(props.params.quoteId);
+  } catch (error) {
+    if (error instanceof DirectusHttpError) {
+      return (
+        <main className="mx-auto grid w-full max-w-5xl gap-4 px-4 py-8 md:px-6">
+          <h1 className="text-2xl font-semibold tracking-tight text-slate-900">Quote not accessible</h1>
+          <p className="text-sm text-slate-700">
+            This quote is not accessible right now. Check server permissions for the quotes collection.
+          </p>
+          <p>
+            <Link className="text-sm font-medium text-sky-700 hover:text-sky-600" href="/configurator">
+              Back to configurator
+            </Link>
+          </p>
+        </main>
+      );
+    }
+    throw error;
+  }
+
   if (!quote) {
     return (
       <main className="mx-auto grid w-full max-w-5xl gap-4 px-4 py-8 md:px-6">
