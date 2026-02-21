@@ -1,14 +1,19 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 
 interface QuoteActionsProps {
   resumeHref: string;
   shareHref: string | null;
+  quoteId: string;
 }
 
 export function QuoteActions(props: QuoteActionsProps): JSX.Element {
+  const router = useRouter();
   const [copied, setCopied] = useState(false);
+  const [isConverting, setIsConverting] = useState(false);
+  const [convertError, setConvertError] = useState<string | null>(null);
 
   return (
     <div className="flex flex-wrap items-center gap-2">
@@ -40,6 +45,36 @@ export function QuoteActions(props: QuoteActionsProps): JSX.Element {
       >
         {copied ? "Copied" : "Copy Public Share Link"}
       </button>
+      <button
+        type="button"
+        disabled={isConverting}
+        onClick={async () => {
+          setConvertError(null);
+          setIsConverting(true);
+          try {
+            const response = await fetch("/api/orders/from-quote", {
+              method: "POST",
+              headers: {
+                "content-type": "application/json"
+              },
+              body: JSON.stringify({ quoteId: props.quoteId })
+            });
+            const payload = (await response.json().catch(() => null)) as { orderId?: string; error?: string } | null;
+            if (!response.ok || !payload?.orderId) {
+              throw new Error(payload?.error ?? "Failed to convert quote");
+            }
+            router.push(`/orders/${payload.orderId}`);
+          } catch (error) {
+            setConvertError(error instanceof Error ? error.message : "Failed to convert quote");
+          } finally {
+            setIsConverting(false);
+          }
+        }}
+        className="rounded-md border border-sky-600 bg-sky-600 px-3 py-2 text-sm font-medium text-white transition hover:bg-sky-500 disabled:cursor-not-allowed disabled:opacity-60"
+      >
+        {isConverting ? "Converting..." : "Convert to Order"}
+      </button>
+      {convertError ? <p className="w-full text-xs text-rose-700">{convertError}</p> : null}
     </div>
   );
 }

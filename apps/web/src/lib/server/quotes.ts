@@ -81,7 +81,7 @@ interface CreateQuoteDirectusResponse {
   quote_number?: string | null;
 }
 
-interface QuoteTotalsSnapshot {
+export interface QuoteTotalsSnapshot {
   modelVersionId: string;
   modelLabel: string;
   priceBook: QuotePriceBook;
@@ -134,7 +134,7 @@ function isObjectRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function parseCustomerInfo(value: unknown): QuoteCustomerInfo {
+export function parseCustomerInfo(value: unknown): QuoteCustomerInfo {
   if (!isObjectRecord(value)) {
     return {
       name: "",
@@ -169,7 +169,7 @@ function createNoStoreClient(args: { baseUrl: string; token: string }): Directus
   });
 }
 
-function parseTotalsSnapshot(value: unknown): QuoteTotalsSnapshot | null {
+export function parseTotalsSnapshot(value: unknown): QuoteTotalsSnapshot | null {
   if (!isObjectRecord(value)) {
     return null;
   }
