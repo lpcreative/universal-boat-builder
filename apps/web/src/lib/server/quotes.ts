@@ -36,6 +36,17 @@ export interface QuoteRecordView {
   selectionsSnapshot: SelectionState;
 }
 
+export interface QuoteListItem {
+  id: string;
+  quoteNumber: string | null;
+  status: string | null;
+  channel: string | null;
+  createdAt: string | null;
+  modelLabel: string | null;
+  priceBook: QuotePriceBook | null;
+  totals: PricingResult["totals"] | null;
+}
+
 interface QuoteDirectusRecord {
   id: string;
   quote_number?: string | null;
@@ -44,6 +55,15 @@ interface QuoteDirectusRecord {
   revision?: string | null;
   totals_snapshot?: unknown;
   selections_snapshot?: unknown;
+}
+
+interface QuoteListDirectusRecord {
+  id: string;
+  quote_number?: string | null;
+  status?: string | null;
+  channel?: string | null;
+  date_created?: string | null;
+  totals_snapshot?: unknown;
 }
 
 interface CreateQuoteDirectusResponse {
@@ -274,4 +294,41 @@ export async function getQuoteById(quoteId: string): Promise<QuoteRecordView | n
     }
     throw error;
   }
+}
+
+export async function listQuotes(args: { limit: number }): Promise<QuoteListItem[]> {
+  const env = checkRequiredDirectusEnv();
+  if (!env.ok) {
+    throw new Error(`Missing Directus environment: ${env.missing.join(", ")}`);
+  }
+  const writeToken = readRequiredDirectusWriteToken();
+
+  const client = new DirectusHttpClient({
+    baseUrl: env.apiUrl,
+    token: writeToken
+  });
+
+  const limit = Number.isFinite(args.limit) ? Math.max(1, Math.min(100, Math.floor(args.limit))) : 25;
+  const rows = await client.request<QuoteListDirectusRecord[]>({
+    path: "/items/quotes",
+    query: {
+      fields: "id,quote_number,status,channel,date_created,totals_snapshot",
+      sort: "-date_created",
+      limit
+    }
+  });
+
+  return rows.map((row) => {
+    const parsedSnapshot = parseTotalsSnapshot(row.totals_snapshot);
+    return {
+      id: row.id,
+      quoteNumber: row.quote_number ?? null,
+      status: row.status ?? null,
+      channel: row.channel ?? null,
+      createdAt: row.date_created ?? null,
+      modelLabel: parsedSnapshot?.modelLabel ?? null,
+      priceBook: parsedSnapshot?.priceBook ?? null,
+      totals: parsedSnapshot?.totals ?? null
+    };
+  });
 }
