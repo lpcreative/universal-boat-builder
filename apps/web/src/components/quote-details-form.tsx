@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 
 interface QuoteDetailsFormProps {
   quoteId: string;
@@ -12,6 +13,7 @@ interface QuoteDetailsFormProps {
 }
 
 export function QuoteDetailsForm(props: QuoteDetailsFormProps): JSX.Element {
+  const router = useRouter();
   const [name, setName] = useState(props.initialCustomerInfo.name);
   const [email, setEmail] = useState(props.initialCustomerInfo.email);
   const [phone, setPhone] = useState(props.initialCustomerInfo.phone);
@@ -48,6 +50,7 @@ export function QuoteDetailsForm(props: QuoteDetailsFormProps): JSX.Element {
       }
 
       setStatusText("Saved");
+      router.refresh();
     } catch (error) {
       setErrorText(error instanceof Error ? error.message : "Failed to save quote details");
     } finally {

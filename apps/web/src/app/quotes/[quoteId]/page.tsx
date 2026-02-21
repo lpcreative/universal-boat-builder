@@ -4,6 +4,8 @@ import { QuoteActions } from "../../../components/quote-actions";
 import { QuoteDetailsForm } from "../../../components/quote-details-form";
 import { getQuoteById } from "../../../lib/server/quotes";
 
+export const dynamic = "force-dynamic";
+
 interface QuotePageProps {
   params: {
     quoteId: string;
