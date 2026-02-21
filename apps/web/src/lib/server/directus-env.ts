@@ -46,3 +46,11 @@ export function checkRequiredDirectusEnv(): DirectusEnvCheckResult {
     token: values.DIRECTUS_STATIC_TOKEN as string
   };
 }
+
+export function readRequiredDirectusWriteToken(): string {
+  const value = process.env.DIRECTUS_WRITE_TOKEN?.trim();
+  if (!value) {
+    throw new Error("DIRECTUS_WRITE_TOKEN missing; configure server_writer token in apps/web/.env.local");
+  }
+  return value;
+}

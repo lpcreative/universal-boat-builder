@@ -5,7 +5,7 @@ import { getModelVersionBundle } from "@ubb/cms-adapter-directus";
 import { computePricing, type PricingLineItem, type PricingResult } from "@ubb/engine/pricing";
 import type { SelectionState } from "../configurator-shared";
 import { sanitizeSelectionState } from "../configurator-shared";
-import { checkRequiredDirectusEnv } from "./directus-env";
+import { checkRequiredDirectusEnv, readRequiredDirectusWriteToken } from "./directus-env";
 
 export type QuotePriceBook = "msrp" | "dealer";
 export type QuoteViewMode = "paged" | "all";
@@ -182,10 +182,11 @@ function parseTotalsSnapshot(value: unknown): QuoteTotalsSnapshot | null {
 }
 
 export async function createQuoteFromConfigurator(input: QuoteCreateInput): Promise<QuoteCreateResult> {
-  const env = checkRequiredDirectusEnv();
-  if (!env.ok) {
-    throw new Error(`Missing Directus environment: ${env.missing.join(", ")}`);
+  const readEnv = checkRequiredDirectusEnv();
+  if (!readEnv.ok) {
+    throw new Error(`Missing Directus environment: ${readEnv.missing.join(", ")}`);
   }
+  const writeToken = readRequiredDirectusWriteToken();
 
   const bundle = await getModelVersionBundle(input.modelVersionId);
   if (!bundle) {
@@ -216,14 +217,15 @@ export async function createQuoteFromConfigurator(input: QuoteCreateInput): Prom
   };
 
   const client = new DirectusHttpClient({
-    baseUrl: env.apiUrl,
-    token: env.token
+    baseUrl: readEnv.apiUrl,
+    token: writeToken
   });
 
   const created = await client.request<CreateQuoteDirectusResponse, Record<string, unknown>>({
     method: "POST",
     path: "/items/quotes",
     body: {
+      status: "draft",
       revision: bundle.published_revision ?? null,
       quote_number: quoteNumber,
       channel: "web",
@@ -245,10 +247,11 @@ export async function getQuoteById(quoteId: string): Promise<QuoteRecordView | n
   if (!env.ok) {
     throw new Error(`Missing Directus environment: ${env.missing.join(", ")}`);
   }
+  const writeToken = readRequiredDirectusWriteToken();
 
   const client = new DirectusHttpClient({
     baseUrl: env.apiUrl,
-    token: env.token
+    token: writeToken
   });
 
   try {
