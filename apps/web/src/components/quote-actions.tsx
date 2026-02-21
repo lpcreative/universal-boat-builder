@@ -4,6 +4,7 @@ import { useState } from "react";
 
 interface QuoteActionsProps {
   resumeHref: string;
+  shareHref: string | null;
 }
 
 export function QuoteActions(props: QuoteActionsProps): JSX.Element {
@@ -19,9 +20,14 @@ export function QuoteActions(props: QuoteActionsProps): JSX.Element {
       </a>
       <button
         type="button"
+        disabled={!props.shareHref}
         onClick={async () => {
+          if (!props.shareHref) {
+            return;
+          }
           try {
-            await navigator.clipboard.writeText(window.location.href);
+            const shareUrl = new URL(props.shareHref, window.location.origin).toString();
+            await navigator.clipboard.writeText(shareUrl);
             setCopied(true);
             window.setTimeout(() => {
               setCopied(false);
@@ -30,9 +36,9 @@ export function QuoteActions(props: QuoteActionsProps): JSX.Element {
             setCopied(false);
           }
         }}
-        className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
+        className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:border-slate-200 disabled:text-slate-400"
       >
-        {copied ? "Copied" : "Copy share link"}
+        {copied ? "Copied" : "Copy Public Share Link"}
       </button>
     </div>
   );

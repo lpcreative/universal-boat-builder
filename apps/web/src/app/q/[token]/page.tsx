@@ -1,15 +1,13 @@
 import Link from "next/link";
 import { DirectusHttpError } from "@ubb/cms-adapter-directus";
-import { QuoteActions } from "../../../components/quote-actions";
-import { QuoteDetailsForm } from "../../../components/quote-details-form";
-import { generateQuoteShareToken } from "../../../lib/server/quote-share";
 import { getQuoteById } from "../../../lib/server/quotes";
+import { verifyQuoteShareToken } from "../../../lib/server/quote-share";
 
 export const dynamic = "force-dynamic";
 
-interface QuotePageProps {
+interface PublicQuotePageProps {
   params: {
-    quoteId: string;
+    token: string;
   };
 }
 
@@ -58,50 +56,57 @@ function buildResumeHref(args: {
   return `/configurator?${params.toString()}`;
 }
 
-export default async function QuotePage(props: QuotePageProps): Promise<JSX.Element> {
+function SharedQuoteError(props: { title: string; message: string }): JSX.Element {
+  return (
+    <main className="mx-auto grid w-full max-w-5xl gap-4 px-4 py-8 md:px-6">
+      <h1 className="text-2xl font-semibold tracking-tight text-slate-900">{props.title}</h1>
+      <p className="text-sm text-slate-700">{props.message}</p>
+      <p>
+        <Link className="text-sm font-medium text-sky-700 hover:text-sky-600" href="/configurator">
+          Open configurator
+        </Link>
+      </p>
+    </main>
+  );
+}
+
+export default async function PublicQuotePage(props: PublicQuotePageProps): Promise<JSX.Element> {
+  const verified = verifyQuoteShareToken(props.params.token);
+  if (!verified) {
+    return (
+      <SharedQuoteError
+        title="Share link invalid or expired"
+        message="This shared quote link is no longer valid. Ask for a new link."
+      />
+    );
+  }
+
   let quote = null;
   try {
-    quote = await getQuoteById(props.params.quoteId);
+    quote = await getQuoteById(verified.quoteId);
   } catch (error) {
     if (error instanceof DirectusHttpError) {
       return (
-        <main className="mx-auto grid w-full max-w-5xl gap-4 px-4 py-8 md:px-6">
-          <h1 className="text-2xl font-semibold tracking-tight text-slate-900">Quote not accessible</h1>
-          <p className="text-sm text-slate-700">
-            This quote is not accessible right now. Check server permissions for the quotes collection.
-          </p>
-          <p>
-            <Link className="text-sm font-medium text-sky-700 hover:text-sky-600" href="/configurator">
-              Back to configurator
-            </Link>
-          </p>
-        </main>
+        <SharedQuoteError
+          title="Shared quote unavailable"
+          message="This quote is not accessible right now. Please try again later."
+        />
       );
     }
     throw error;
   }
 
   if (!quote) {
-    return (
-      <main className="mx-auto grid w-full max-w-5xl gap-4 px-4 py-8 md:px-6">
-        <h1 className="text-2xl font-semibold tracking-tight text-slate-900">Quote not found</h1>
-        <p className="text-sm text-slate-700">No quote exists for ID: {props.params.quoteId}</p>
-        <p>
-          <Link className="text-sm font-medium text-sky-700 hover:text-sky-600" href="/configurator">
-            Back to configurator
-          </Link>
-        </p>
-      </main>
-    );
+    return <SharedQuoteError title="Quote not found" message="The shared quote could not be found." />;
   }
 
   const snapshot = quote.totalsSnapshot;
   if (!snapshot) {
     return (
-      <main className="mx-auto grid w-full max-w-5xl gap-4 px-4 py-8 md:px-6">
-        <h1 className="text-2xl font-semibold tracking-tight text-slate-900">Quote {quote.quoteNumber ?? quote.id}</h1>
-        <p className="text-sm text-slate-700">This quote does not have a pricing snapshot.</p>
-      </main>
+      <SharedQuoteError
+        title="Quote snapshot unavailable"
+        message="This quote does not include pricing details to display."
+      />
     );
   }
 
@@ -116,18 +121,11 @@ export default async function QuotePage(props: QuotePageProps): Promise<JSX.Elem
     stepId: snapshot.meta.stepId,
     encodedSelections: snapshot.meta.encodedSelections
   });
-  let shareHref: string | null = null;
-  try {
-    const shareToken = generateQuoteShareToken({ quoteId: quote.id, expiresInDays: 30 });
-    shareHref = `/q/${shareToken}`;
-  } catch {
-    shareHref = null;
-  }
 
   return (
     <main className="mx-auto grid w-full max-w-7xl gap-6 px-4 py-8 md:px-6 lg:grid-cols-12">
       <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm lg:col-span-5">
-        <p className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">Quote Snapshot</p>
+        <p className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">Shared Quote</p>
         <h1 className="mt-1 text-2xl font-semibold text-slate-900">{snapshot.modelLabel}</h1>
         <dl className="mt-4 grid gap-2 text-sm text-slate-700">
           <div className="flex items-center justify-between gap-3">
@@ -146,13 +144,19 @@ export default async function QuotePage(props: QuotePageProps): Promise<JSX.Elem
             <dt>Total</dt>
             <dd className="text-lg font-semibold tabular-nums text-slate-900">{formatCurrency(activeTotal)}</dd>
           </div>
+          <div className="flex items-center justify-between gap-3">
+            <dt>Customer</dt>
+            <dd>{quote.customerInfo.name || "—"}</dd>
+          </div>
         </dl>
 
         <div className="mt-5">
-          <QuoteActions resumeHref={resumeHref} shareHref={shareHref} />
-        </div>
-        <div className="mt-5">
-          <QuoteDetailsForm quoteId={quote.id} initialCustomerInfo={quote.customerInfo} />
+          <Link
+            href={resumeHref}
+            className="inline-flex rounded-md border border-slate-900 bg-slate-900 px-3 py-2 text-sm font-medium text-white transition hover:bg-slate-800"
+          >
+            Resume configurator
+          </Link>
         </div>
       </section>
 
