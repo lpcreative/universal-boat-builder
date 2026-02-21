@@ -9,6 +9,11 @@ import { checkRequiredDirectusEnv, readRequiredDirectusWriteToken } from "./dire
 
 export type QuotePriceBook = "msrp" | "dealer";
 export type QuoteViewMode = "paged" | "all";
+export interface QuoteCustomerInfo {
+  name: string;
+  email: string;
+  phone: string;
+}
 
 export interface QuoteCreateInput {
   modelVersionId: string;
@@ -34,16 +39,41 @@ export interface QuoteRecordView {
   revision: string | null;
   totalsSnapshot: QuoteTotalsSnapshot | null;
   selectionsSnapshot: SelectionState;
+  customerInfo: QuoteCustomerInfo;
+}
+
+export interface QuoteListItem {
+  id: string;
+  quoteNumber: string | null;
+  createdAt: string | null;
+  status: string | null;
+  channel: string | null;
+  customerInfo: QuoteCustomerInfo;
+  modelLabel: string | null;
+  totals: PricingResult["totals"] | null;
+  priceBook: QuotePriceBook | null;
 }
 
 interface QuoteDirectusRecord {
   id: string;
   quote_number?: string | null;
+  status?: string | null;
   date_created?: string | null;
   channel?: string | null;
   revision?: string | null;
+  customer_info?: unknown;
   totals_snapshot?: unknown;
   selections_snapshot?: unknown;
+}
+
+interface QuoteListDirectusRecord {
+  id: string;
+  quote_number?: string | null;
+  status?: string | null;
+  date_created?: string | null;
+  channel?: string | null;
+  customer_info?: unknown;
+  totals_snapshot?: unknown;
 }
 
 interface CreateQuoteDirectusResponse {
@@ -102,6 +132,29 @@ function toLineItemSnapshot(lineItem: PricingLineItem, priceBook: QuotePriceBook
 
 function isObjectRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function parseCustomerInfo(value: unknown): QuoteCustomerInfo {
+  if (!isObjectRecord(value)) {
+    return {
+      name: "",
+      email: "",
+      phone: ""
+    };
+  }
+  return {
+    name: typeof value.name === "string" ? value.name : "",
+    email: typeof value.email === "string" ? value.email : "",
+    phone: typeof value.phone === "string" ? value.phone : ""
+  };
+}
+
+function normalizeCustomerInfo(input: Partial<QuoteCustomerInfo>): QuoteCustomerInfo {
+  return {
+    name: (input.name ?? "").trim(),
+    email: (input.email ?? "").trim(),
+    phone: (input.phone ?? "").trim()
+  };
 }
 
 function parseTotalsSnapshot(value: unknown): QuoteTotalsSnapshot | null {
@@ -265,6 +318,7 @@ export async function getQuoteById(quoteId: string): Promise<QuoteRecordView | n
       createdAt: quote.date_created ?? null,
       channel: quote.channel ?? null,
       revision: quote.revision ?? null,
+      customerInfo: parseCustomerInfo(quote.customer_info),
       totalsSnapshot: parseTotalsSnapshot(quote.totals_snapshot),
       selectionsSnapshot: sanitizeSelectionState(quote.selections_snapshot)
     };
@@ -274,4 +328,69 @@ export async function getQuoteById(quoteId: string): Promise<QuoteRecordView | n
     }
     throw error;
   }
+}
+
+export async function listQuotes(args: { limit: number }): Promise<QuoteListItem[]> {
+  const env = checkRequiredDirectusEnv();
+  if (!env.ok) {
+    throw new Error(`Missing Directus environment: ${env.missing.join(", ")}`);
+  }
+  const writeToken = readRequiredDirectusWriteToken();
+
+  const client = new DirectusHttpClient({
+    baseUrl: env.apiUrl,
+    token: writeToken
+  });
+
+  const limit = Number.isFinite(args.limit) ? Math.max(1, Math.min(100, Math.floor(args.limit))) : 25;
+  const rows = await client.request<QuoteListDirectusRecord[]>({
+    path: "/items/quotes",
+    query: {
+      fields: "id,quote_number,status,date_created,channel,customer_info,totals_snapshot",
+      sort: "-date_created",
+      limit
+    }
+  });
+
+  return rows.map((row) => {
+    const parsedSnapshot = parseTotalsSnapshot(row.totals_snapshot);
+    return {
+      id: row.id,
+      quoteNumber: row.quote_number ?? null,
+      createdAt: row.date_created ?? null,
+      status: row.status ?? null,
+      channel: row.channel ?? null,
+      customerInfo: parseCustomerInfo(row.customer_info),
+      modelLabel: parsedSnapshot?.modelLabel ?? null,
+      totals: parsedSnapshot?.totals ?? null,
+      priceBook: parsedSnapshot?.priceBook ?? null
+    };
+  });
+}
+
+export async function updateQuoteCustomerInfo(args: {
+  quoteId: string;
+  customerInfo: Partial<QuoteCustomerInfo>;
+}): Promise<QuoteCustomerInfo> {
+  const env = checkRequiredDirectusEnv();
+  if (!env.ok) {
+    throw new Error(`Missing Directus environment: ${env.missing.join(", ")}`);
+  }
+  const writeToken = readRequiredDirectusWriteToken();
+
+  const client = new DirectusHttpClient({
+    baseUrl: env.apiUrl,
+    token: writeToken
+  });
+
+  const customerInfo = normalizeCustomerInfo(args.customerInfo);
+  const updated = await client.request<QuoteDirectusRecord, Record<string, unknown>>({
+    method: "PATCH",
+    path: `/items/quotes/${encodeURIComponent(args.quoteId)}`,
+    body: {
+      customer_info: customerInfo
+    }
+  });
+
+  return parseCustomerInfo(updated.customer_info);
 }
